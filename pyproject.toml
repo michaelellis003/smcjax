@@ -8,10 +8,17 @@ authors = [
 license = {text = "Apache-2.0"}
 readme = "README.md"
 requires-python = ">=3.10"
-keywords = []
+keywords = [
+    "jax",
+    "particle-filter",
+    "sequential-monte-carlo",
+    "bayesian-inference",
+    "state-space-models",
+    "hidden-markov-models",
+]
 classifiers = [
-    "Development Status :: 4 - Beta",
-    "Intended Audience :: Developers",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
@@ -19,14 +26,18 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Mathematics",
     "Typing :: Typed",
 ]
 dependencies = [
+    "jax>=0.4.20,<0.5",
+    "jaxlib>=0.4.20,<0.5",
+    "jaxtyping>=0.2.25",
+    "tensorflow-probability>=0.23.0,<0.26",
 ]
 
-# Uncomment to add a CLI entry point:
-# [project.scripts]
-# smcjax = "smcjax.__main__:main"
+[project.optional-dependencies]
+dynamax = ["dynamax>=0.1.3"]
 
 [project.urls]
 Homepage = "https://github.com/michaelellis003/smcjax"
@@ -47,6 +58,12 @@ dev = [
 docs = [
     "mkdocs-material>=9.6",
     "mkdocstrings[python]>=0.29",
+]
+test = [
+    "blackjax>=1.3",
+    "dynamax>=0.1.3",
+    "ipython>=8.0",
+    "particles>=0.4",
 ]
 
 [build-system]
@@ -102,6 +119,12 @@ ignore = [
     "D206",
     # triple-single-quotes (formatter handles this)
     "D300",
+    # jaxtyping string annotations are not valid PEP 3107 annotations
+    "F722",
+    # Allow Union[X, Y] style to match Dynamax conventions
+    "UP007",
+    # Allow too many function args (common in scientific computing APIs)
+    "PLR0913",
 ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
@@ -124,7 +147,7 @@ lines-after-imports = -1
 lines-between-types = 0
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["D", "S101", "S603", "PLR2004", "ARG"]
+"tests/*" = ["D", "S101", "S603", "PLR2004", "ARG", "N802", "N806", "E501", "C408", "RUF012"]
 "scripts/*" = ["T20", "S310", "S603", "S607", "BLE001"]
 "__init__.py" = ["F401"]
 "__main__.py" = ["T20"]
