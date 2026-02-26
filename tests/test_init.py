@@ -1,5 +1,7 @@
 # Copyright 2026 Michael Ellis
 # SPDX-License-Identifier: Apache-2.0
+"""Tests for the package-level API."""
+
 from importlib.metadata import PackageNotFoundError
 from unittest.mock import patch
 
@@ -14,7 +16,20 @@ def test_version_is_accessible():
 
 def test_public_api_exports_all_expected_names(package):
     """Test that __all__ contains exactly the expected public API."""
-    expected = ['__version__', 'add', 'hello', 'multiply', 'subtract']
+    expected = [
+        'ParticleFilterPosterior',
+        'ParticleState',
+        '__version__',
+        'bootstrap_filter',
+        'ess',
+        'log_ess',
+        'log_normalize',
+        'multinomial',
+        'normalize',
+        'residual',
+        'stratified',
+        'systematic',
+    ]
     assert sorted(package.__all__) == sorted(expected)
 
 
