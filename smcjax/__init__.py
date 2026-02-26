@@ -5,10 +5,16 @@
 from importlib.metadata import PackageNotFoundError as _PackageNotFoundError
 from importlib.metadata import version as _version
 
+from blackjax.smc.ess import ess, log_ess
+from blackjax.smc.resampling import (
+    multinomial,
+    residual,
+    stratified,
+    systematic,
+)
+
 from smcjax.bootstrap import bootstrap_filter
 from smcjax.containers import ParticleFilterPosterior, ParticleState
-from smcjax.ess import ess, log_ess
-from smcjax.resampling import multinomial, residual, stratified, systematic
 from smcjax.weights import log_normalize, normalize
 
 try:

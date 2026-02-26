@@ -30,9 +30,7 @@ def _make_smcjax_fns(lgssm_params):
     R = lgssm_params['emissions_cov']
 
     def initial_sampler(key, n):
-        return tfd.MultivariateNormalFullCovariance(m0, P0).sample(
-            n, seed=key
-        )
+        return tfd.MultivariateNormalFullCovariance(m0, P0).sample(n, seed=key)
 
     def transition_sampler(key, state):
         mean = (F @ state[:, None]).squeeze(-1)
@@ -40,9 +38,7 @@ def _make_smcjax_fns(lgssm_params):
 
     def log_observation_fn(emission, state):
         mean = (H @ state[:, None]).squeeze(-1)
-        return tfd.MultivariateNormalFullCovariance(mean, R).log_prob(
-            emission
-        )
+        return tfd.MultivariateNormalFullCovariance(mean, R).log_prob(emission)
 
     return initial_sampler, transition_sampler, log_observation_fn
 
@@ -222,9 +218,7 @@ class TestBootstrapConvergence:
             errors.append(abs(float(pf.marginal_loglik) - exact_ll))
 
         # Error should generally decrease with more particles
-        assert errors[-1] < errors[0], (
-            f'Error did not decrease: {errors}'
-        )
+        assert errors[-1] < errors[0], f'Error did not decrease: {errors}'
 
 
 class TestBootstrapESSTrace:

@@ -9,8 +9,8 @@ from smcjax.types import Scalar
 
 
 def log_normalize(
-    log_weights: Float[Array, " num_particles"],
-) -> tuple[Float[Array, " num_particles"], Scalar]:
+    log_weights: Float[Array, ' num_particles'],
+) -> tuple[Float[Array, ' num_particles'], Scalar]:
     """Normalize log weights and return the log normalizing constant.
 
     Args:
@@ -27,8 +27,8 @@ def log_normalize(
 
 
 def normalize(
-    log_weights: Float[Array, " num_particles"],
-) -> Float[Array, " num_particles"]:
+    log_weights: Float[Array, ' num_particles'],
+) -> Float[Array, ' num_particles']:
     """Exponentiate and normalize log weights.
 
     Args:
