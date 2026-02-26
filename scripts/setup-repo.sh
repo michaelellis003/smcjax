@@ -88,7 +88,7 @@ PAYLOAD=$(jq -n \
                 parameters: {
                     required_approving_review_count: $reviews,
                     dismiss_stale_reviews_on_push: false,
-                    require_code_owner_review: false,
+                    require_code_owner_review: true,
                     require_last_push_approval: false,
                     required_review_thread_resolution: false
                 }

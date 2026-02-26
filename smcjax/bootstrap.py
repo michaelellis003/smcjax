@@ -18,13 +18,13 @@ from collections.abc import Callable
 
 import jax.numpy as jnp
 import jax.random as jr
+from blackjax.smc.ess import ess as compute_ess
+from blackjax.smc.resampling import systematic
 from jax import lax, vmap
 from jaxtyping import Array, Float
 
 from smcjax.containers import ParticleFilterPosterior, ParticleState
-from smcjax.ess import ess as compute_ess
-from smcjax.resampling import systematic
-from smcjax.types import PRNGKeyT, Scalar
+from smcjax.types import PRNGKeyT
 from smcjax.weights import log_normalize, normalize
 
 
@@ -33,7 +33,7 @@ def bootstrap_filter(
     initial_sampler: Callable,
     transition_sampler: Callable,
     log_observation_fn: Callable,
-    emissions: Float[Array, "ntime emission_dim"],
+    emissions: Float[Array, 'ntime emission_dim'],
     num_particles: int,
     resampling_fn: Callable = systematic,
     resampling_threshold: float = 0.5,
@@ -92,7 +92,7 @@ def bootstrap_filter(
     # --- Scan body for t = 1, ..., T-1 -------------------------------------
     def _step(
         carry: ParticleState,
-        args: tuple[PRNGKeyT, Float[Array, " emission_dim"]],
+        args: tuple[PRNGKeyT, Float[Array, ' emission_dim']],
     ) -> tuple[ParticleState, tuple[Array, Array, Array, Array]]:
         state, (step_key, y_t) = carry, args
         k1, k2 = jr.split(step_key)
@@ -146,18 +146,19 @@ def bootstrap_filter(
 
     # Run the scan over t = 1 ... T-1
     step_keys = jr.split(key, emissions.shape[0] - 1)
-    final_state, (
-        particles_rest,
-        log_w_rest,
-        ancestors_rest,
-        ess_rest,
+    (
+        final_state,
+        (
+            particles_rest,
+            log_w_rest,
+            ancestors_rest,
+            ess_rest,
+        ),
     ) = lax.scan(_step, init_state, (step_keys, emissions[1:]))
 
     # --- Combine t=0 with t=1..T-1 -----------------------------------------
     def _prepend(first: Array, rest: Array) -> Array:
-        return jnp.concatenate(
-            [jnp.expand_dims(first, 0), rest], axis=0
-        )
+        return jnp.concatenate([jnp.expand_dims(first, 0), rest], axis=0)
 
     all_particles = _prepend(particles_0, particles_rest)
     all_log_w = _prepend(log_w_0, log_w_rest)

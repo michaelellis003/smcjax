@@ -23,8 +23,8 @@ class ParticleState(NamedTuple):
         log_marginal_likelihood: Running log marginal likelihood estimate.
     """
 
-    particles: Float[Array, "num_particles state_dim"]
-    log_weights: Float[Array, " num_particles"]
+    particles: Float[Array, 'num_particles state_dim']
+    log_weights: Float[Array, ' num_particles']
     log_marginal_likelihood: Scalar
 
 
@@ -49,7 +49,7 @@ class ParticleFilterPosterior(NamedTuple):
     """
 
     marginal_loglik: Scalar
-    filtered_particles: Float[Array, "ntime num_particles state_dim"]
-    filtered_log_weights: Float[Array, "ntime num_particles"]
-    ancestors: Int[Array, "ntime num_particles"]
-    ess: Float[Array, " ntime"]
+    filtered_particles: Float[Array, 'ntime num_particles state_dim']
+    filtered_log_weights: Float[Array, 'ntime num_particles']
+    ancestors: Int[Array, 'ntime num_particles']
+    ess: Float[Array, ' ntime']

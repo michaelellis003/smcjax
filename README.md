@@ -8,18 +8,15 @@
 
 Sequential Monte Carlo and particle filtering in JAX.
 
-**smcjax** provides JIT-compiled, GPU-ready particle filters designed to
-eventually integrate with [Dynamax](https://github.com/probml/dynamax)
-(Kevin Murphy's JAX state space model library).
+**smcjax** provides JIT-compiled, GPU-ready particle filters.
 
 ## Features
 
 - **Bootstrap (SIR) particle filter** via `jax.lax.scan`
-- **4 resampling schemes**: systematic, stratified, multinomial, residual
-- **Effective sample size** (ESS) computation
+- **4 resampling schemes** (via [Blackjax](https://github.com/blackjax-devs/blackjax)): systematic, stratified, multinomial, residual
+- **Effective sample size** (ESS) computation (via Blackjax)
 - **Conditional resampling** with configurable ESS threshold
 - All functions are `jit`- and `vmap`-compatible
-- Interface-compatible with [Blackjax](https://github.com/blackjax-devs/blackjax) resampling
 - Type annotations via [jaxtyping](https://github.com/google/jaxtyping)
 
 ## Installation
@@ -85,42 +82,34 @@ print(f"Mean ESS: {posterior.ess.mean():.1f}")
 
 ```
 smcjax/
-    __init__.py          # Public API
+    __init__.py          # Public API (re-exports blackjax ESS & resampling)
     types.py             # PRNGKeyT, Scalar (matches Dynamax)
     containers.py        # ParticleState, ParticleFilterPosterior
     weights.py           # log_normalize, normalize
-    ess.py               # Effective sample size
-    resampling.py        # systematic, stratified, multinomial, residual
     bootstrap.py         # Bootstrap (SIR) particle filter
 ```
 
+ESS and resampling (systematic, stratified, multinomial, residual) are
+provided by [Blackjax](https://github.com/blackjax-devs/blackjax) and
+re-exported from `smcjax` for convenience.
+
 ## Cross-Validation
 
-All implementations are tested against reference libraries:
+The bootstrap filter is tested against reference libraries:
 
 | Module | Reference | Validation |
 |--------|-----------|------------|
-| `ess` | [Blackjax](https://github.com/blackjax-devs/blackjax) | Exact match |
-| `resampling` | Blackjax | Identical indices with same PRNG key |
 | `bootstrap` | [Dynamax](https://github.com/probml/dynamax) Kalman filter | Log-ML within 5% of exact |
 | `bootstrap` | [particles](https://github.com/nchopin/particles) (Chopin) | Log-ML within 3 nats |
 
-## Dynamax Contribution Roadmap
+## Roadmap
 
-This library is being developed with the goal of contributing particle
-filtering capabilities to Dynamax, which currently has zero PF
-implementations and three open issues requesting them
-([#112](https://github.com/probml/dynamax/issues/112),
-[#272](https://github.com/probml/dynamax/issues/272),
-[#275](https://github.com/probml/dynamax/issues/275)).
-
-| Phase | What | Dynamax Issue |
-|-------|------|---------------|
-| 1 (current) | Bootstrap particle filter | #112 |
-| 2 | Auxiliary particle filter | #112 |
-| 3 | EKF/UKF proposal particle filters | #272 |
-| 4 | Liu-West filter, PMMH | #275 |
-| 5 | PR to Dynamax | All |
+| Phase | What |
+|-------|------|
+| 1 (current) | Bootstrap particle filter |
+| 2 | Auxiliary particle filter |
+| 3 | EKF/UKF proposal particle filters |
+| 4 | Liu-West filter, PMMH |
 
 ## Development
 
