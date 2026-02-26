@@ -1,0 +1,48 @@
+default_install_hook_types: [pre-commit, commit-msg]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0  # Use the ref you want to point at
+    hooks:
+      - id: check-added-large-files
+      - id: check-case-conflict
+      - id: check-merge-conflict
+      - id: check-json
+      - id: check-yaml
+        exclude: ^recipe/meta\.yaml$
+      - id: check-toml
+      - id: debug-statements
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+  - repo: https://github.com/Lucas-C/pre-commit-hooks
+    rev: v1.5.5
+    hooks:
+      - id: insert-license
+        files: \.py$
+        args:
+          - --license-filepath=LICENSE_HEADER
+          - --comment-style=#
+          - --detect-license-in-X-top-lines=5
+  # Keep rev in sync with ruff version in pyproject.toml [dependency-groups].
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.1
+    hooks:
+      - id: ruff
+        args: [ --fix ]
+      - id: ruff-format
+  # Keep rev in sync with pyright version in pyproject.toml [dependency-groups].
+  - repo: https://github.com/RobertCraigie/pyright-python
+    rev: v1.1.408
+    hooks:
+      - id: pyright
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.3.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args: [feat, fix, test, refactor, docs, chore, perf, ci, style]
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.7.12
+    hooks:
+      - id: uv-lock

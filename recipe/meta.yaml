@@ -1,0 +1,37 @@
+{% set name = "smcjax" %}
+{% set version = "0.1.0" %}
+
+package:
+  name: {{ name }}
+  version: {{ version }}
+
+source:
+  url: https://pypi.org/packages/source/{{ name[0] }}/{{ name }}/{{ name.replace('-', '_') }}-{{ version }}.tar.gz
+  sha256: REPLACE_WITH_SHA256
+
+build:
+  noarch: python
+  number: 0
+  script: {{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
+
+requirements:
+  host:
+    - python >=3.10
+    - pip
+    - hatchling
+  run:
+    - python >=3.10
+
+test:
+  imports:
+    - smcjax
+
+about:
+  home: https://github.com/michaelellis003/smcjax
+  summary: 'Sequential Monte Carlo and particle filtering in JAX'
+  license: Apache-2.0
+  license_file: LICENSE
+
+extra:
+  recipe-maintainers:
+    - michaelellis003
