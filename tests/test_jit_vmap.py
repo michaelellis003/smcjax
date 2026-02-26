@@ -8,8 +8,7 @@ import jax.random as jr
 import pytest
 from tensorflow_probability.substrates.jax import distributions as tfd
 
-from smcjax.ess import ess, log_ess
-from smcjax.resampling import multinomial, residual, stratified, systematic
+from smcjax import ess, log_ess, multinomial, residual, stratified, systematic
 from smcjax.weights import log_normalize, normalize
 
 

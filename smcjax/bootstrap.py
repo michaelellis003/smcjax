@@ -18,13 +18,13 @@ from collections.abc import Callable
 
 import jax.numpy as jnp
 import jax.random as jr
+from blackjax.smc.ess import ess as compute_ess
+from blackjax.smc.resampling import systematic
 from jax import lax, vmap
 from jaxtyping import Array, Float
 
 from smcjax.containers import ParticleFilterPosterior, ParticleState
-from smcjax.ess import ess as compute_ess
-from smcjax.resampling import systematic
-from smcjax.types import PRNGKeyT, Scalar
+from smcjax.types import PRNGKeyT
 from smcjax.weights import log_normalize, normalize
 
 
