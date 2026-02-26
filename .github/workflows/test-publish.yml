@@ -1,0 +1,42 @@
+name: Test Publish
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  test-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - name: Setup uv
+        uses: ./.github/actions/setup-uv
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Validate package metadata
+        run: uvx twine check dist/*
+
+      # --- Uncomment the step below to publish to TestPyPI ---
+      #
+      # Prerequisites:
+      #   1. Create a TestPyPI account at https://test.pypi.org/account/register/
+      #   2. Navigate to https://test.pypi.org/manage/account/publishing/
+      #   3. Add a "pending publisher":
+      #        • Owner: <your-github-owner>
+      #        • Repository: <your-repo-name>
+      #        • Workflow name: test-publish.yml
+      #        • Environment: (leave blank)
+      #   4. Remove the '#' from the step below and commit
+      #
+      # - name: Publish to TestPyPI
+      #   uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e  # release/v1
+      #   with:
+      #     repository-url: https://test.pypi.org/legacy/
+      #     packages-dir: dist/

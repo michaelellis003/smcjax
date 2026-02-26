@@ -1,0 +1,41 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+*.egg
+build/
+dist/
+wheels/
+*.egg-info
+.pytest_cache
+.ruff_cache
+.mypy_cache/
+.coverage
+coverage.xml
+.DS_Store
+
+# Test / task runners
+.tox/
+.nox/
+.hypothesis/
+
+# Misc
+*.log
+.python-version
+
+# Environment variables
+.env
+.env.*
+
+# Coverage HTML reports
+htmlcov/
+
+# MkDocs build output
+site/
+
+# Virtual environments
+.venv
+
+# Claude Code local files (personal, not shared)
+CLAUDE.local.md
+.claude/settings.local.json
+.claude/agent-memory-local/

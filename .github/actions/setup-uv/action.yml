@@ -1,0 +1,18 @@
+name: 'Setup uv'
+description: 'Install uv and sync project dependencies'
+inputs:
+  python-version:
+    description: 'Python version'
+    required: false
+    default: '3.13'
+runs:
+  using: 'composite'
+  steps:
+    - name: 'Install uv'
+      uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86  # v5
+      with:
+        python-version: ${{ inputs.python-version }}
+        enable-cache: true
+    - name: Install dependencies
+      shell: bash
+      run: uv sync --locked
