@@ -15,7 +15,9 @@ concurrency:
 # Python version sync: keep env.PYTHON_VERSION, matrix.python-version,
 # and pyproject.toml requires-python + classifiers in sync.
 env:
-  PYTHON_VERSION: "3.13"
+  # dm-tree 0.1.8 (via tensorflow-probability) has no Python 3.13
+  # wheel and fails to build from source, so cap at 3.12 for now.
+  PYTHON_VERSION: "3.12"
 
 jobs:
   ruff-lint:
@@ -70,7 +72,7 @@ jobs:
       fail-fast: false
       matrix:
         # Keep in sync with requires-python in pyproject.toml.
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12"]
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
