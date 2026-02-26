@@ -95,6 +95,6 @@ jobs:
           attestations: true
       - name: Attest build provenance
         if: steps.version.outputs.released == 'true'
-        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be  # v2
+        uses: actions/attest-build-provenance@e4d4f7c39adfa4c260fb5c147f0622000aa14b99  # v4.0.0
         with:
           subject-path: dist/*
