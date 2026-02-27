@@ -65,13 +65,13 @@ def _init_liu_west(
     particles_0 = initial_sampler(k_z, num_particles)
     params_0 = param_initial_sampler(k_p, num_particles)
 
-    log_obs_0 = vmap(
-        lambda z, p: log_observation_fn(first_emission, z, p)
-    )(particles_0, params_0)
+    log_obs_0 = vmap(lambda z, p: log_observation_fn(first_emission, z, p))(
+        particles_0, params_0
+    )
 
     log_w_0, log_sum_0 = log_normalize(log_obs_0)
     log_ev_0 = log_sum_0 - log_n
-    ess_0 = compute_ess(log_w_0)
+    ess_0 = jnp.asarray(compute_ess(log_w_0))
     identity = jnp.arange(num_particles, dtype=jnp.int32)
     return particles_0, params_0, log_w_0, log_ev_0, ess_0, identity
 
@@ -132,16 +132,25 @@ def liu_west_filter(
     h_sq = 1.0 - a**2
 
     (
-        particles_0, params_0, log_w_0, log_ev_0, ess_0,
+        particles_0,
+        params_0,
+        log_w_0,
+        log_ev_0,
+        ess_0,
         identity_ancestors,
     ) = _init_liu_west(
-        init_key, initial_sampler, param_initial_sampler,
-        log_observation_fn, emissions[0], num_particles,
+        init_key,
+        initial_sampler,
+        param_initial_sampler,
+        log_observation_fn,
+        emissions[0],
+        num_particles,
     )
 
     # --- Scan body for t = 1, ..., T-1 -------------------------------------
     def _step(
-        carry: _Carry, args: tuple[PRNGKeyT, Array],
+        carry: _Carry,
+        args: tuple[PRNGKeyT, Array],
     ) -> tuple[_Carry, tuple[Array, Array, Array, Array, Array]]:
         particles, params, log_weights, log_ml = carry
         step_key, y_t = args
@@ -157,12 +166,10 @@ def liu_west_filter(
         shrunk = a * params + (1.0 - a) * param_mean[None, :]
 
         # 1. First-stage weights using shrunk params
-        log_aux = vmap(
-            lambda z, p: log_auxiliary_fn(y_t, z, p)
-        )(particles, shrunk)
-        log_first_norm, log_first_sum = log_normalize(
-            log_weights + log_aux
+        log_aux = vmap(lambda z, p: log_auxiliary_fn(y_t, z, p))(
+            particles, shrunk
         )
+        log_first_norm, log_first_sum = log_normalize(log_weights + log_aux)
 
         # 2. Conditionally resample
         cur_ess = compute_ess(log_first_norm)
@@ -170,7 +177,9 @@ def liu_west_filter(
         ancestors = lax.cond(
             do_resample,
             lambda: resampling_fn(
-                k1, normalize(log_first_norm), num_particles,
+                k1,
+                normalize(log_first_norm),
+                num_particles,
             ),
             lambda: identity_ancestors,
         )
@@ -184,13 +193,15 @@ def liu_west_filter(
 
         keys = jr.split(k3, num_particles)
         propagated = vmap(transition_sampler)(
-            keys, particles[ancestors], new_params,
+            keys,
+            particles[ancestors],
+            new_params,
         )
 
         # 4. Second-stage weights
-        log_obs = vmap(
-            lambda z, p: log_observation_fn(y_t, z, p)
-        )(propagated, new_params)
+        log_obs = vmap(lambda z, p: log_observation_fn(y_t, z, p))(
+            propagated, new_params
+        )
         log_w_unnorm = jnp.where(
             do_resample,
             log_obs - log_aux[ancestors],
@@ -204,25 +215,35 @@ def liu_west_filter(
             log_sum,
         )
 
-        new_carry = (propagated, new_params, log_w_norm,
-                     log_ml + log_ev_inc)
+        new_carry = (propagated, new_params, log_w_norm, log_ml + log_ev_inc)
         ess_t = jnp.asarray(compute_ess(log_w_norm))
         return new_carry, (
-            propagated, new_params, log_w_norm, ancestors, ess_t,
+            propagated,
+            new_params,
+            log_w_norm,
+            ancestors,
+            ess_t,
         )
 
     init_carry: _Carry = (particles_0, params_0, log_w_0, log_ev_0)
     step_keys = jr.split(key, emissions.shape[0] - 1)
 
-    final_carry, (
-        particles_rest, params_rest, log_w_rest,
-        ancestors_rest, ess_rest,
+    (
+        final_carry,
+        (
+            particles_rest,
+            params_rest,
+            log_w_rest,
+            ancestors_rest,
+            ess_rest,
+        ),
     ) = lax.scan(_step, init_carry, (step_keys, emissions[1:]))
 
     # --- Combine t=0 with t=1..T-1 -----------------------------------------
     def _prepend(first: Array, rest: Array) -> Array:
         return jnp.concatenate(
-            [jnp.expand_dims(first, 0), rest], axis=0,
+            [jnp.expand_dims(first, 0), rest],
+            axis=0,
         )
 
     _, _, _, final_log_ml = final_carry

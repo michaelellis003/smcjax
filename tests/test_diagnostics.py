@@ -14,8 +14,10 @@ from tensorflow_probability.substrates.jax import distributions as tfd
 
 from smcjax.bootstrap import bootstrap_filter
 from smcjax.diagnostics import (
+    log_bayes_factor,
     log_ml_increments,
     particle_diversity,
+    replicated_log_ml,
     weighted_mean,
     weighted_quantile,
     weighted_variance,
@@ -186,3 +188,59 @@ class TestDiagnosticsJIT:
         jax.jit(lambda p: weighted_quantile(p, jnp.array([0.5])))(pf_post)
         jax.jit(log_ml_increments)(pf_post)
         jax.jit(particle_diversity)(pf_post)
+
+
+class TestLogBayesFactor:
+    """Tests for log_bayes_factor."""
+
+    def test_log_bayes_factor_symmetric(self):
+        """BF(M1, M2) = -BF(M2, M1)."""
+        bf = log_bayes_factor(jnp.float64(-70.0), jnp.float64(-75.0))
+        bf_rev = log_bayes_factor(jnp.float64(-75.0), jnp.float64(-70.0))
+        assert float(bf) == pytest.approx(-float(bf_rev), abs=1e-10)
+
+    def test_log_bayes_factor_value(self):
+        """BF is difference of log-MLs."""
+        bf = log_bayes_factor(jnp.float64(-70.0), jnp.float64(-75.0))
+        assert float(bf) == pytest.approx(5.0, abs=1e-10)
+
+
+class TestReplicatedLogML:
+    """Tests for replicated_log_ml."""
+
+    def test_replicated_log_ml_shape(self, lgssm_params, lgssm_data):
+        """Should return array of shape (num_replicates,)."""
+        _, emissions = lgssm_data
+        init_fn, trans_fn, obs_fn = _make_smcjax_fns(lgssm_params)
+
+        def filter_fn(key):
+            return bootstrap_filter(
+                key=key,
+                initial_sampler=init_fn,
+                transition_sampler=trans_fn,
+                log_observation_fn=obs_fn,
+                emissions=emissions,
+                num_particles=500,
+            ).marginal_loglik
+
+        result = replicated_log_ml(jr.PRNGKey(0), filter_fn, num_replicates=10)
+        assert result.shape == (10,)
+        assert jnp.all(jnp.isfinite(result))
+
+    def test_replicated_log_ml_variability(self, lgssm_params, lgssm_data):
+        """Replicates should have non-zero variance."""
+        _, emissions = lgssm_data
+        init_fn, trans_fn, obs_fn = _make_smcjax_fns(lgssm_params)
+
+        def filter_fn(key):
+            return bootstrap_filter(
+                key=key,
+                initial_sampler=init_fn,
+                transition_sampler=trans_fn,
+                log_observation_fn=obs_fn,
+                emissions=emissions,
+                num_particles=200,
+            ).marginal_loglik
+
+        result = replicated_log_ml(jr.PRNGKey(1), filter_fn, num_replicates=20)
+        assert float(jnp.var(result)) > 0.0

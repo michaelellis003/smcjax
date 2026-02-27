@@ -15,16 +15,25 @@ Computational faithfulness (Vehtari: *can we trust the computation?*):
 - :func:`particle_diversity` — fraction of unique particles per step
 - :func:`log_ml_increments` — per-step evidence contributions
 
+Model comparison:
+
+- :func:`log_bayes_factor` — log Bayes factor between two models
+- :func:`replicated_log_ml` — Monte Carlo variability of log-ML
+
 All functions are pure, stateless, operate on arrays from
 :class:`~smcjax.containers.ParticleFilterPosterior`, and are
 JIT-compatible.
 """
 
+from collections.abc import Callable
+
 import jax.numpy as jnp
+import jax.random as jr
 from jax import vmap
 from jaxtyping import Array, Float, Int
 
 from smcjax.containers import ParticleFilterPosterior
+from smcjax.types import PRNGKeyT, Scalar
 from smcjax.weights import normalize
 
 
@@ -223,3 +232,50 @@ def particle_diversity(
         return jnp.sum(is_unique) / num_particles
 
     return vmap(_diversity_one_step)(ancestors)
+
+
+def log_bayes_factor(
+    log_ml_1: Scalar,
+    log_ml_2: Scalar,
+) -> Scalar:
+    r"""Compute the log Bayes factor between two models.
+
+    .. math::
+
+        \log BF_{12} = \log p(y_{1:T} \mid M_1)
+                     - \log p(y_{1:T} \mid M_2)
+
+    Positive values favour model 1; negative values favour model 2.
+
+    Args:
+        log_ml_1: Log marginal likelihood of model 1.
+        log_ml_2: Log marginal likelihood of model 2.
+
+    Returns:
+        Scalar log Bayes factor.
+    """
+    return jnp.asarray(log_ml_1) - jnp.asarray(log_ml_2)
+
+
+def replicated_log_ml(
+    key: PRNGKeyT,
+    filter_fn: Callable[[PRNGKeyT], Scalar],
+    num_replicates: int,
+) -> Float[Array, ' num_replicates']:
+    r"""Run a particle filter multiple times to assess log-ML variability.
+
+    Uses :func:`jax.vmap` over PRNG keys for efficient parallel
+    evaluation.  The resulting distribution of log-ML estimates
+    quantifies Monte Carlo uncertainty in the evidence.
+
+    Args:
+        key: JAX PRNG key.
+        filter_fn: Function ``(key) -> scalar`` that runs a particle
+            filter and returns the marginal log-likelihood.
+        num_replicates: Number of independent filter runs.
+
+    Returns:
+        Array of log-ML estimates, shape ``(num_replicates,)``.
+    """
+    keys = jr.split(key, num_replicates)
+    return jnp.asarray(vmap(filter_fn)(keys))

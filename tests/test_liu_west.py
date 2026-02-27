@@ -15,7 +15,6 @@ from tensorflow_probability.substrates.jax import distributions as tfd
 
 from smcjax.liu_west import liu_west_filter
 
-
 # ---------------------------------------------------------------------------
 # Test model: 1-D LGSSM with unknown observation noise variance
 #
@@ -53,16 +52,16 @@ def _make_liu_west_fns():
         sigma_y_sq = jnp.exp(params[0])
         R = jnp.array([[sigma_y_sq]], dtype=jnp.float64)
         predicted_mean = (H @ F @ state[:, None]).squeeze(-1)
-        return tfd.MultivariateNormalFullCovariance(predicted_mean, R).log_prob(
-            emission
-        )
+        return tfd.MultivariateNormalFullCovariance(
+            predicted_mean, R
+        ).log_prob(emission)
 
     def param_initial_sampler(key, n):
         # Prior on log(sigma_y^2) ~ N(0, 0.5^2)
         # so sigma_y^2 ~ LogNormal(0, 0.5) centered around 1.0
-        return tfd.Normal(
-            jnp.float64(0.0), jnp.float64(0.5)
-        ).sample((n, 1), seed=key)
+        return tfd.Normal(jnp.float64(0.0), jnp.float64(0.5)).sample(
+            (n, 1), seed=key
+        )
 
     return (
         initial_sampler,
@@ -105,7 +104,9 @@ class TestLiuWestRecoversParams:
 
         final_weights = normalize(post.filtered_log_weights[-1])
         final_params = post.filtered_params[-1]  # (N, 1)
-        posterior_mean = float(jnp.sum(final_weights[:, None] * final_params, axis=0)[0])
+        posterior_mean = float(
+            jnp.sum(final_weights[:, None] * final_params, axis=0)[0]
+        )
 
         # log(sigma_y^2) should be near 0 (= log(1.0))
         assert posterior_mean == pytest.approx(0.0, abs=0.5), (
@@ -131,19 +132,27 @@ class TestLiuWestFixedParamsMatchesAPF:
 
         # APF closures (no params)
         def apf_init(key, n):
-            return tfd.MultivariateNormalFullCovariance(m0, P0).sample(n, seed=key)
+            return tfd.MultivariateNormalFullCovariance(m0, P0).sample(
+                n, seed=key
+            )
 
         def apf_trans(key, state):
             mean = (F @ state[:, None]).squeeze(-1)
-            return tfd.MultivariateNormalFullCovariance(mean, Q).sample(seed=key)
+            return tfd.MultivariateNormalFullCovariance(mean, Q).sample(
+                seed=key
+            )
 
         def apf_obs(emission, state):
             mean = (H @ state[:, None]).squeeze(-1)
-            return tfd.MultivariateNormalFullCovariance(mean, R).log_prob(emission)
+            return tfd.MultivariateNormalFullCovariance(mean, R).log_prob(
+                emission
+            )
 
         def apf_aux(emission, state):
             pred = (H @ F @ state[:, None]).squeeze(-1)
-            return tfd.MultivariateNormalFullCovariance(pred, R).log_prob(emission)
+            return tfd.MultivariateNormalFullCovariance(pred, R).log_prob(
+                emission
+            )
 
         # Liu-West closures (params ignored since fixed)
         def lw_init(key, n):
@@ -233,8 +242,7 @@ class TestLiuWestShrinkage:
 
         # Lower shrinkage (0.80) should give wider spread
         assert spreads[0] > spreads[1], (
-            f'Spread with a=0.80: {spreads[0]:.4f}, '
-            f'a=0.99: {spreads[1]:.4f}'
+            f'Spread with a=0.80: {spreads[0]:.4f}, a=0.99: {spreads[1]:.4f}'
         )
 
 
@@ -249,21 +257,29 @@ class TestLiuWestJIT:
         H = jnp.array([[1.0]])
 
         def init(key, n):
-            return tfd.MultivariateNormalFullCovariance(m0, P0).sample(n, seed=key)
+            return tfd.MultivariateNormalFullCovariance(m0, P0).sample(
+                n, seed=key
+            )
 
         def trans(key, state, params):
             mean = (F @ state[:, None]).squeeze(-1)
-            return tfd.MultivariateNormalFullCovariance(mean, Q).sample(seed=key)
+            return tfd.MultivariateNormalFullCovariance(mean, Q).sample(
+                seed=key
+            )
 
         def obs(emission, state, params):
             R = jnp.array([[jnp.exp(params[0])]])
             mean = (H @ state[:, None]).squeeze(-1)
-            return tfd.MultivariateNormalFullCovariance(mean, R).log_prob(emission)
+            return tfd.MultivariateNormalFullCovariance(mean, R).log_prob(
+                emission
+            )
 
         def aux(emission, state, params):
             R = jnp.array([[jnp.exp(params[0])]])
             pred = (H @ F @ state[:, None]).squeeze(-1)
-            return tfd.MultivariateNormalFullCovariance(pred, R).log_prob(emission)
+            return tfd.MultivariateNormalFullCovariance(pred, R).log_prob(
+                emission
+            )
 
         def param_init(key, n):
             return jnp.zeros((n, 1))
