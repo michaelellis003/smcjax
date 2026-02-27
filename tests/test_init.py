@@ -17,12 +17,14 @@ def test_version_is_accessible():
 def test_public_api_exports_all_expected_names(package):
     """Test that __all__ contains exactly the expected public API."""
     expected = [
+        'LiuWestPosterior',
         'ParticleFilterPosterior',
         'ParticleState',
         '__version__',
         'auxiliary_filter',
         'bootstrap_filter',
         'ess',
+        'liu_west_filter',
         'log_ess',
         'log_ml_increments',
         'log_normalize',

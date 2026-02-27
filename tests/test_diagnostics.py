@@ -32,21 +32,15 @@ def _make_smcjax_fns(lgssm_params):
     R = lgssm_params['emissions_cov']
 
     def initial_sampler(key, n):
-        return tfd.MultivariateNormalFullCovariance(
-            m0, P0
-        ).sample(n, seed=key)
+        return tfd.MultivariateNormalFullCovariance(m0, P0).sample(n, seed=key)
 
     def transition_sampler(key, state):
         mean = (F @ state[:, None]).squeeze(-1)
-        return tfd.MultivariateNormalFullCovariance(
-            mean, Q
-        ).sample(seed=key)
+        return tfd.MultivariateNormalFullCovariance(mean, Q).sample(seed=key)
 
     def log_observation_fn(emission, state):
         mean = (H @ state[:, None]).squeeze(-1)
-        return tfd.MultivariateNormalFullCovariance(
-            mean, R
-        ).log_prob(emission)
+        return tfd.MultivariateNormalFullCovariance(mean, R).log_prob(emission)
 
     return initial_sampler, transition_sampler, log_observation_fn
 
@@ -68,9 +62,7 @@ def _run_bootstrap(lgssm_params, lgssm_data, n=10_000, seed=0):
 class TestWeightedMean:
     """Tests for weighted_mean."""
 
-    def test_weighted_mean_matches_kalman(
-        self, lgssm_params, lgssm_data
-    ):
+    def test_weighted_mean_matches_kalman(self, lgssm_params, lgssm_data):
         """PF weighted means should track Kalman filtered means."""
         from dynamax.linear_gaussian_ssm.inference import (
             lgssm_filter,
@@ -94,9 +86,7 @@ class TestWeightedMean:
 class TestWeightedVariance:
     """Tests for weighted_variance."""
 
-    def test_weighted_variance_uniform_weights(
-        self, lgssm_params, lgssm_data
-    ):
+    def test_weighted_variance_uniform_weights(self, lgssm_params, lgssm_data):
         """With uniform weights, matches unweighted variance."""
         pf_post = _run_bootstrap(lgssm_params, lgssm_data)
 
@@ -117,9 +107,7 @@ class TestWeightedVariance:
 
         wvar = weighted_variance(uniform_post)
         # Unweighted variance
-        uvar = jnp.var(
-            pf_post.filtered_particles, axis=1
-        )
+        uvar = jnp.var(pf_post.filtered_particles, axis=1)
 
         assert jnp.allclose(wvar, uvar, atol=1e-6)
 
@@ -136,9 +124,7 @@ class TestWeightedQuantile:
         medians = weighted_quantile(pf_post, jnp.array([0.5]))
 
         # medians shape: (ntime, 1, state_dim), squeeze quantile dim
-        assert jnp.allclose(
-            medians[:, 0, :], means, atol=0.2
-        )
+        assert jnp.allclose(medians[:, 0, :], means, atol=0.2)
 
     def test_weighted_quantile_interval_contains_truth(
         self, lgssm_params, lgssm_data
@@ -153,9 +139,7 @@ class TestWeightedQuantile:
         lower = quantiles[:, 0, :]
         upper = quantiles[:, 1, :]
 
-        covered = jnp.all(
-            (states >= lower) & (states <= upper), axis=-1
-        )
+        covered = jnp.all((states >= lower) & (states <= upper), axis=-1)
         coverage = float(jnp.mean(covered))
 
         # With T=50, expect ~95% coverage but allow Monte Carlo
@@ -166,9 +150,7 @@ class TestWeightedQuantile:
 class TestLogMLIncrements:
     """Tests for log_ml_increments."""
 
-    def test_log_ml_increments_sum_to_total(
-        self, lgssm_params, lgssm_data
-    ):
+    def test_log_ml_increments_sum_to_total(self, lgssm_params, lgssm_data):
         """Increments should sum to total marginal log-likelihood."""
         pf_post = _run_bootstrap(lgssm_params, lgssm_data)
         increments = log_ml_increments(pf_post)
@@ -181,13 +163,9 @@ class TestLogMLIncrements:
 class TestParticleDiversity:
     """Tests for particle_diversity."""
 
-    def test_particle_diversity_bounded(
-        self, lgssm_params, lgssm_data
-    ):
+    def test_particle_diversity_bounded(self, lgssm_params, lgssm_data):
         """Diversity should be in [0, 1] at every time step."""
-        pf_post = _run_bootstrap(
-            lgssm_params, lgssm_data, n=1_000
-        )
+        pf_post = _run_bootstrap(lgssm_params, lgssm_data, n=1_000)
         diversity = particle_diversity(pf_post)
 
         assert jnp.all(diversity >= 0.0)
@@ -199,18 +177,12 @@ class TestParticleDiversity:
 class TestDiagnosticsJIT:
     """All diagnostics should be JIT-compatible."""
 
-    def test_diagnostics_jit_compatible(
-        self, lgssm_params, lgssm_data
-    ):
+    def test_diagnostics_jit_compatible(self, lgssm_params, lgssm_data):
         """Diagnostics compile and run under jax.jit."""
-        pf_post = _run_bootstrap(
-            lgssm_params, lgssm_data, n=500
-        )
+        pf_post = _run_bootstrap(lgssm_params, lgssm_data, n=500)
 
         jax.jit(weighted_mean)(pf_post)
         jax.jit(weighted_variance)(pf_post)
-        jax.jit(
-            lambda p: weighted_quantile(p, jnp.array([0.5]))
-        )(pf_post)
+        jax.jit(lambda p: weighted_quantile(p, jnp.array([0.5])))(pf_post)
         jax.jit(log_ml_increments)(pf_post)
         jax.jit(particle_diversity)(pf_post)

@@ -42,9 +42,7 @@ def weighted_mean(
     # weights: (ntime, num_particles)
     weights = vmap(normalize)(posterior.filtered_log_weights)
     # particles: (ntime, num_particles, state_dim)
-    return jnp.einsum(
-        'tn,tnd->td', weights, posterior.filtered_particles
-    )
+    return jnp.einsum('tn,tnd->td', weights, posterior.filtered_particles)
 
 
 def weighted_variance(
@@ -87,7 +85,6 @@ def weighted_quantile(
     """
     particles = posterior.filtered_particles
     log_weights = posterior.filtered_log_weights
-    ntime, num_particles, state_dim = particles.shape
 
     weights = vmap(normalize)(log_weights)  # (ntime, num_particles)
 
@@ -109,9 +106,9 @@ def weighted_quantile(
         weights_t: Float[Array, ' num_particles'],
     ) -> Float[Array, 'num_quantiles state_dim']:
         """Compute quantiles for one time step, all state dims."""
-        return vmap(
-            _quantile_one_time_dim, in_axes=(1, None)
-        )(particles_t, weights_t).T
+        return vmap(_quantile_one_time_dim, in_axes=(1, None))(
+            particles_t, weights_t
+        ).T
 
     return vmap(_quantile_one_time)(particles, weights)
 
@@ -145,8 +142,6 @@ def log_ml_increments(
         to ``posterior.marginal_loglik``.
     """
     log_w = posterior.filtered_log_weights
-    ntime, num_particles = log_w.shape
-    log_n = jnp.log(jnp.asarray(num_particles, dtype=jnp.float64))
 
     # At each step, the evidence increment is encoded in the
     # unnormalised weights before normalisation.  Since we only
@@ -184,9 +179,8 @@ def log_ml_increments(
     total = posterior.marginal_loglik
     entropy_sum = jnp.sum(entropy)
     # Avoid division by zero
-    scale = total / jnp.where(
-        jnp.abs(entropy_sum) > 1e-10, entropy_sum, 1.0
-    )
+    _eps = 1e-10
+    scale = total / jnp.where(jnp.abs(entropy_sum) > _eps, entropy_sum, 1.0)
     return entropy * scale
 
 
@@ -220,10 +214,12 @@ def particle_diversity(
         sorted_anc = jnp.sort(anc)
         # First element is always unique; subsequent are unique if
         # different from predecessor
-        is_unique = jnp.concatenate([
-            jnp.array([True]),
-            sorted_anc[1:] != sorted_anc[:-1],
-        ])
+        is_unique = jnp.concatenate(
+            [
+                jnp.array([True]),
+                sorted_anc[1:] != sorted_anc[:-1],
+            ]
+        )
         return jnp.sum(is_unique) / num_particles
 
     return vmap(_diversity_one_step)(ancestors)

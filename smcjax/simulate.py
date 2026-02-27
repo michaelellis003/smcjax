@@ -13,6 +13,7 @@ compiled into a single XLA program.
 
 from collections.abc import Callable
 
+import jax.numpy as jnp
 import jax.random as jr
 from jax import lax
 from jaxtyping import Array, Float
@@ -69,17 +70,11 @@ def simulate(
         return z_t, (z_t, y_t)
 
     step_keys = jr.split(k_rest, num_timesteps - 1)
-    _, (states_rest, emissions_rest) = lax.scan(
-        _step, z_0, step_keys
-    )
+    _, (states_rest, emissions_rest) = lax.scan(_step, z_0, step_keys)
 
     # --- Combine t=0 with t=1..T-1 ------------------------------------------
-    import jax.numpy as jnp
-
     def _prepend(first: Array, rest: Array) -> Array:
-        return jnp.concatenate(
-            [jnp.expand_dims(first, 0), rest], axis=0
-        )
+        return jnp.concatenate([jnp.expand_dims(first, 0), rest], axis=0)
 
     all_states = _prepend(z_0, states_rest)
     all_emissions = _prepend(y_0, emissions_rest)

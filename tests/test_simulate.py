@@ -24,21 +24,15 @@ def _make_lgssm_samplers(lgssm_params):
     R = lgssm_params['emissions_cov']
 
     def initial_sampler(key):
-        return tfd.MultivariateNormalFullCovariance(
-            m0, P0
-        ).sample(seed=key)
+        return tfd.MultivariateNormalFullCovariance(m0, P0).sample(seed=key)
 
     def transition_sampler(key, state):
         mean = (F @ state[:, None]).squeeze(-1)
-        return tfd.MultivariateNormalFullCovariance(
-            mean, Q
-        ).sample(seed=key)
+        return tfd.MultivariateNormalFullCovariance(mean, Q).sample(seed=key)
 
     def emission_sampler(key, state):
         mean = (H @ state[:, None]).squeeze(-1)
-        return tfd.MultivariateNormalFullCovariance(
-            mean, R
-        ).sample(seed=key)
+        return tfd.MultivariateNormalFullCovariance(mean, R).sample(seed=key)
 
     return initial_sampler, transition_sampler, emission_sampler
 
@@ -48,9 +42,7 @@ class TestSimulateOutputShapes:
 
     def test_simulate_output_shapes(self, lgssm_params):
         """States and emissions have correct shapes."""
-        init_fn, trans_fn, emit_fn = _make_lgssm_samplers(
-            lgssm_params
-        )
+        init_fn, trans_fn, emit_fn = _make_lgssm_samplers(lgssm_params)
         states, emissions = simulate(
             key=jr.PRNGKey(0),
             initial_sampler=init_fn,
@@ -67,9 +59,7 @@ class TestSimulateLGSSMStatistics:
 
     def test_simulate_lgssm_statistics(self, lgssm_params):
         """Mean and variance of states near analytical steady-state."""
-        init_fn, trans_fn, emit_fn = _make_lgssm_samplers(
-            lgssm_params
-        )
+        init_fn, trans_fn, emit_fn = _make_lgssm_samplers(lgssm_params)
 
         # Simulate many trajectories to estimate moments
         keys = jr.split(jr.PRNGKey(42), 5_000)
@@ -102,9 +92,7 @@ class TestSimulateJIT:
 
     def test_simulate_jit_compiles(self, lgssm_params):
         """Simulate runs under jax.jit."""
-        init_fn, trans_fn, emit_fn = _make_lgssm_samplers(
-            lgssm_params
-        )
+        init_fn, trans_fn, emit_fn = _make_lgssm_samplers(lgssm_params)
 
         @jax.jit
         def run(key):
