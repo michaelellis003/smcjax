@@ -121,3 +121,58 @@ class TestBootstrapJIT:
         result = run(jr.PRNGKey(0))
         assert result.filtered_particles.shape == (10, 50, 1)
         assert jnp.isfinite(result.marginal_loglik)
+
+
+class TestAuxiliaryJIT:
+    """Auxiliary particle filter compiles under jit."""
+
+    def test_jit_compiles(self):
+        from smcjax.auxiliary import auxiliary_filter
+
+        m0 = jnp.array([0.0])
+        P0 = jnp.array([[1.0]])
+        F = jnp.array([[0.9]])
+        Q = jnp.array([[0.25]])
+        H = jnp.array([[1.0]])
+        R = jnp.array([[1.0]])
+
+        def init(key, n):
+            return tfd.MultivariateNormalFullCovariance(m0, P0).sample(
+                n, seed=key
+            )
+
+        def trans(key, state):
+            mean = (F @ state[:, None]).squeeze(-1)
+            return tfd.MultivariateNormalFullCovariance(mean, Q).sample(
+                seed=key
+            )
+
+        def obs(emission, state):
+            mean = (H @ state[:, None]).squeeze(-1)
+            return tfd.MultivariateNormalFullCovariance(mean, R).log_prob(
+                emission
+            )
+
+        def aux(emission, state):
+            pred = (H @ F @ state[:, None]).squeeze(-1)
+            return tfd.MultivariateNormalFullCovariance(pred, R).log_prob(
+                emission
+            )
+
+        emissions = jnp.ones((10, 1))
+
+        @jax.jit
+        def run(key):
+            return auxiliary_filter(
+                key=key,
+                initial_sampler=init,
+                transition_sampler=trans,
+                log_observation_fn=obs,
+                log_auxiliary_fn=aux,
+                emissions=emissions,
+                num_particles=50,
+            )
+
+        result = run(jr.PRNGKey(0))
+        assert result.filtered_particles.shape == (10, 50, 1)
+        assert jnp.isfinite(result.marginal_loglik)

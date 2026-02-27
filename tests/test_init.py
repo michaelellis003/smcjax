@@ -20,6 +20,7 @@ def test_public_api_exports_all_expected_names(package):
         'ParticleFilterPosterior',
         'ParticleState',
         '__version__',
+        'auxiliary_filter',
         'bootstrap_filter',
         'ess',
         'log_ess',

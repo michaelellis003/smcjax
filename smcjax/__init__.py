@@ -13,6 +13,7 @@ from blackjax.smc.resampling import (
     systematic,
 )
 
+from smcjax.auxiliary import auxiliary_filter
 from smcjax.bootstrap import bootstrap_filter
 from smcjax.containers import ParticleFilterPosterior, ParticleState
 from smcjax.weights import log_normalize, normalize
@@ -26,6 +27,7 @@ __all__ = [
     'ParticleFilterPosterior',
     'ParticleState',
     '__version__',
+    'auxiliary_filter',
     'bootstrap_filter',
     'ess',
     'log_ess',
