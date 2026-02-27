@@ -24,12 +24,18 @@ def test_public_api_exports_all_expected_names(package):
         'bootstrap_filter',
         'ess',
         'log_ess',
+        'log_ml_increments',
         'log_normalize',
         'multinomial',
         'normalize',
+        'particle_diversity',
         'residual',
+        'simulate',
         'stratified',
         'systematic',
+        'weighted_mean',
+        'weighted_quantile',
+        'weighted_variance',
     ]
     assert sorted(package.__all__) == sorted(expected)
 

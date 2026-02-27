@@ -30,21 +30,15 @@ def _make_smcjax_fns(lgssm_params):
     R = lgssm_params['emissions_cov']
 
     def initial_sampler(key, n):
-        return tfd.MultivariateNormalFullCovariance(
-            m0, P0
-        ).sample(n, seed=key)
+        return tfd.MultivariateNormalFullCovariance(m0, P0).sample(n, seed=key)
 
     def transition_sampler(key, state):
         mean = (F @ state[:, None]).squeeze(-1)
-        return tfd.MultivariateNormalFullCovariance(
-            mean, Q
-        ).sample(seed=key)
+        return tfd.MultivariateNormalFullCovariance(mean, Q).sample(seed=key)
 
     def log_observation_fn(emission, state):
         mean = (H @ state[:, None]).squeeze(-1)
-        return tfd.MultivariateNormalFullCovariance(
-            mean, R
-        ).log_prob(emission)
+        return tfd.MultivariateNormalFullCovariance(mean, R).log_prob(emission)
 
     def log_auxiliary_fn(emission, state):
         """Look-ahead: p(y_{t+1} | mu_{t+1}) where mu = F @ x_t."""
@@ -69,9 +63,7 @@ def _make_smcjax_fns(lgssm_params):
 class TestAuxiliaryVsKalman:
     """APF on a linear Gaussian SSM should approximate Kalman."""
 
-    def test_auxiliary_log_ml_matches_kalman(
-        self, lgssm_params, lgssm_data
-    ):
+    def test_auxiliary_log_ml_matches_kalman(self, lgssm_params, lgssm_data):
         """APF log-ML should be close to Kalman exact log-ML."""
         from dynamax.linear_gaussian_ssm.inference import (
             lgssm_filter,
@@ -86,9 +78,7 @@ class TestAuxiliaryVsKalman:
         exact_ll = float(kalman_post.marginal_loglik)
 
         # APF with many particles
-        init_fn, trans_fn, obs_fn, aux_fn = _make_smcjax_fns(
-            lgssm_params
-        )
+        init_fn, trans_fn, obs_fn, aux_fn = _make_smcjax_fns(lgssm_params)
         pf_post = auxiliary_filter(
             key=jr.PRNGKey(123),
             initial_sampler=init_fn,
@@ -118,9 +108,7 @@ class TestAuxiliaryFlatMatchesBootstrap:
     ):
         """With flat auxiliary, APF log-ML ≈ bootstrap log-ML."""
         _, emissions = lgssm_data
-        init_fn, trans_fn, obs_fn, _ = _make_smcjax_fns(
-            lgssm_params
-        )
+        init_fn, trans_fn, obs_fn, _ = _make_smcjax_fns(lgssm_params)
 
         def flat_auxiliary_fn(emission, state):
             return jnp.float64(0.0)
@@ -169,9 +157,7 @@ class TestAuxiliaryESSTrace:
     def test_auxiliary_ess_bounded(self, lgssm_params, lgssm_data):
         """ESS should be between 1 and N at every time step."""
         _, emissions = lgssm_data
-        init_fn, trans_fn, obs_fn, aux_fn = _make_smcjax_fns(
-            lgssm_params
-        )
+        init_fn, trans_fn, obs_fn, aux_fn = _make_smcjax_fns(lgssm_params)
         n = 1_000
         pf = auxiliary_filter(
             key=jr.PRNGKey(111),

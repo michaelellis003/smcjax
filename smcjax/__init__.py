@@ -16,6 +16,14 @@ from blackjax.smc.resampling import (
 from smcjax.auxiliary import auxiliary_filter
 from smcjax.bootstrap import bootstrap_filter
 from smcjax.containers import ParticleFilterPosterior, ParticleState
+from smcjax.diagnostics import (
+    log_ml_increments,
+    particle_diversity,
+    weighted_mean,
+    weighted_quantile,
+    weighted_variance,
+)
+from smcjax.simulate import simulate
 from smcjax.weights import log_normalize, normalize
 
 try:
@@ -31,10 +39,16 @@ __all__ = [
     'bootstrap_filter',
     'ess',
     'log_ess',
+    'log_ml_increments',
     'log_normalize',
     'multinomial',
     'normalize',
+    'particle_diversity',
     'residual',
+    'simulate',
     'stratified',
     'systematic',
+    'weighted_mean',
+    'weighted_quantile',
+    'weighted_variance',
 ]

@@ -116,9 +116,7 @@ def auxiliary_filter(
 
         # 1. First-stage weights: combine current weights with
         #    look-ahead g(y_{t+1} | x_t)
-        log_aux = vmap(lambda z: log_auxiliary_fn(y_t, z))(
-            state.particles
-        )
+        log_aux = vmap(lambda z: log_auxiliary_fn(y_t, z))(state.particles)
         log_first_stage = state.log_weights + log_aux
 
         # Normalise first-stage weights for resampling
@@ -146,9 +144,7 @@ def auxiliary_filter(
         propagated = vmap(transition_sampler)(keys, resampled_particles)
 
         # 4. Second-stage weights: observation / look-ahead adjustment
-        log_obs = vmap(lambda z: log_observation_fn(y_t, z))(
-            propagated
-        )
+        log_obs = vmap(lambda z: log_observation_fn(y_t, z))(propagated)
         log_second_stage = log_obs - log_aux_ancestors
 
         # Compute evidence increment and normalize.
@@ -199,9 +195,7 @@ def auxiliary_filter(
 
     # --- Combine t=0 with t=1..T-1 -----------------------------------------
     def _prepend(first: Array, rest: Array) -> Array:
-        return jnp.concatenate(
-            [jnp.expand_dims(first, 0), rest], axis=0
-        )
+        return jnp.concatenate([jnp.expand_dims(first, 0), rest], axis=0)
 
     all_particles = _prepend(particles_0, particles_rest)
     all_log_w = _prepend(log_w_0, log_w_rest)
