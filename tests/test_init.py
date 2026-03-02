@@ -17,18 +17,32 @@ def test_version_is_accessible():
 def test_public_api_exports_all_expected_names(package):
     """Test that __all__ contains exactly the expected public API."""
     expected = [
+        'LiuWestPosterior',
         'ParticleFilterPosterior',
         'ParticleState',
         '__version__',
+        'auxiliary_filter',
         'bootstrap_filter',
+        'crps',
         'ess',
+        'liu_west_filter',
+        'log_bayes_factor',
         'log_ess',
+        'log_ml_increments',
         'log_normalize',
         'multinomial',
         'normalize',
+        'param_weighted_mean',
+        'param_weighted_quantile',
+        'particle_diversity',
+        'replicated_log_ml',
         'residual',
+        'simulate',
         'stratified',
         'systematic',
+        'weighted_mean',
+        'weighted_quantile',
+        'weighted_variance',
     ]
     assert sorted(package.__all__) == sorted(expected)
 

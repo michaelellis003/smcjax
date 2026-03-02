@@ -1,14 +1,23 @@
 # Copyright 2026 Michael Ellis
 # SPDX-License-Identifier: Apache-2.0
-r"""Bootstrap (SIR) particle filter.
+r"""Auxiliary particle filter (Pitt & Shephard, 1999).
 
-The bootstrap filter [Gordon *et al.*, 1993] is the simplest Sequential
-Monte Carlo algorithm.  At each time step it:
+The auxiliary particle filter (APF) improves on the bootstrap filter by
+using a *look-ahead* step that biases resampling towards particles
+likely to match the next observation **before** propagation.
 
-1. **Resamples** (conditionally on ESS) to focus particles on
-   high-likelihood regions.
-2. **Propagates** particles through the transition prior.
-3. **Weights** particles by the observation likelihood.
+At each time step the APF:
+
+1. **First-stage weights** — combines the current normalised weights
+   with the look-ahead log-density
+   :math:`\log g(y_{t+1} \mid x_t^i)` to form first-stage weights.
+2. **Resamples** (conditionally on ESS) using the first-stage weights.
+3. **Propagates** resampled particles through the transition prior.
+4. **Second-stage weights** — corrects for the look-ahead bias:
+   :math:`w_t^{(2)} = p(y_{t+1} \mid x_{t+1}^i) / g(y_{t+1} \mid x_t^{a_i})`.
+
+When ``log_auxiliary_fn`` returns zero for all inputs, the APF
+reduces to the bootstrap filter.
 
 The implementation uses :func:`jax.lax.scan` so the full time-loop is
 compiled into a single XLA program.
@@ -28,40 +37,48 @@ from smcjax.types import PRNGKeyT
 from smcjax.weights import log_normalize, normalize
 
 
-def bootstrap_filter(
+def auxiliary_filter(
     key: PRNGKeyT,
     initial_sampler: Callable,
     transition_sampler: Callable,
     log_observation_fn: Callable,
+    log_auxiliary_fn: Callable,
     emissions: Float[Array, 'ntime emission_dim'],
     num_particles: int,
     resampling_fn: Callable = systematic,
     resampling_threshold: float = 0.5,
 ) -> ParticleFilterPosterior:
-    r"""Run a bootstrap (SIR) particle filter.
+    r"""Run an auxiliary particle filter (Pitt & Shephard, 1999).
 
     Args:
         key: JAX PRNG key.
         initial_sampler: Function ``(key, num_particles) -> particles``
             that draws from the initial state distribution
             :math:`p(z_1)`.
-        transition_sampler: Function ``(key, state) -> state`` that draws
-            from the transition distribution
-            :math:`p(z_t \mid z_{t-1})`.  Will be ``vmap``-ped over the
-            particle dimension internally.
+        transition_sampler: Function ``(key, state) -> state`` that
+            draws from the transition distribution
+            :math:`p(z_t \mid z_{t-1})`.  Will be ``vmap``-ped over
+            the particle dimension internally.
         log_observation_fn: Function
             ``(emission, state) -> log_prob`` that evaluates the
             observation log-density :math:`\log p(y_t \mid z_t)`.
             Will be ``vmap``-ped over the particle dimension (second
             argument) internally.
+        log_auxiliary_fn: Function
+            ``(emission, state) -> log_prob`` that evaluates the
+            look-ahead log-density
+            :math:`\log g(y_{t+1} \mid x_t)`.
+            Will be ``vmap``-ped over the particle dimension (second
+            argument) internally.  When this returns zero for all
+            inputs the APF reduces to the bootstrap filter.
         emissions: Observed emissions, shape ``(T, D)``.
         num_particles: Number of particles :math:`N`.
         resampling_fn: Resampling algorithm matching the Blackjax
             signature ``(key, weights, num_samples) -> indices``.
-            Defaults to :func:`~smcjax.resampling.systematic`.
-        resampling_threshold: Fraction of ``num_particles`` below which
-            resampling is triggered (e.g. 0.5 means resample when
-            ``ESS < 0.5 * N``).
+            Defaults to :func:`~blackjax.smc.resampling.systematic`.
+        resampling_threshold: Fraction of ``num_particles`` below
+            which resampling is triggered (e.g. 0.5 means resample
+            when ``ESS < 0.5 * N``).
 
     Returns:
         :class:`~smcjax.containers.ParticleFilterPosterior` containing
@@ -97,10 +114,18 @@ def bootstrap_filter(
         state, (step_key, y_t) = carry, args
         k1, k2 = jr.split(step_key)
 
-        # 1. Conditionally resample
-        cur_ess = compute_ess(state.log_weights)
+        # 1. First-stage weights: combine current weights with
+        #    look-ahead g(y_{t+1} | x_t)
+        log_aux = vmap(lambda z: log_auxiliary_fn(y_t, z))(state.particles)
+        log_first_stage = state.log_weights + log_aux
+
+        # Normalise first-stage weights for resampling
+        log_first_norm, log_first_sum = log_normalize(log_first_stage)
+
+        # 2. Conditionally resample using first-stage weights
+        cur_ess = compute_ess(log_first_norm)
         threshold = resampling_threshold * num_particles
-        w_norm = normalize(state.log_weights)
+        w_norm = normalize(log_first_norm)
 
         do_resample = cur_ess < threshold
         ancestors = lax.cond(
@@ -110,28 +135,40 @@ def bootstrap_filter(
         )
         resampled_particles = state.particles[ancestors]
 
-        # 2. Propagate through transition
+        # Store the look-ahead values for ancestors (needed for
+        # second-stage correction)
+        log_aux_ancestors = log_aux[ancestors]
+
+        # 3. Propagate through transition
         keys = jr.split(k2, num_particles)
         propagated = vmap(transition_sampler)(keys, resampled_particles)
 
-        # 3. Weight by observation likelihood
+        # 4. Second-stage weights: observation / look-ahead adjustment
         log_obs = vmap(lambda z: log_observation_fn(y_t, z))(propagated)
+        log_second_stage = log_obs - log_aux_ancestors
 
         # Compute evidence increment and normalize.
-        # If resampled: weights were reset to uniform (1/N), so
-        #   increment = logsumexp(log_obs) - log(N)
-        # If not resampled: old normalized weights W_i sum to 1, so
-        #   increment = logsumexp(log_W + log_obs)
+        # If resampled: first-stage weights were used for resampling,
+        #   the evidence increment is the product of two factors:
+        #   (a) E_W[g] = sum_i W_i * g_i  (first-stage normaliser)
+        #   (b) (1/N) sum_j w_j^(2)       (mean second-stage weight)
+        # If not resampled: standard importance weighting,
+        #   increment = logsumexp(log_w_old + log_obs)
         log_w_unnorm = jnp.where(
             do_resample,
-            log_obs,
+            log_second_stage,
             state.log_weights + log_obs,
         )
         log_w_norm, log_sum = log_normalize(log_w_unnorm)
+
+        # log_first_sum = logsumexp(log_w_norm_old + log_aux)
+        #   = log(sum W_i g_i) = log E_W[g]  (no 1/N needed)
+        # log_sum for second stage = logsumexp(log_second_stage)
+        #   so mean = log_sum - log_n
+        log_ev_inc_resample = log_first_sum + log_sum - log_n
+        log_ev_inc_no_resample = log_sum
         log_ev_inc = jnp.where(
-            do_resample,
-            log_sum - log_n,
-            log_sum,
+            do_resample, log_ev_inc_resample, log_ev_inc_no_resample
         )
 
         new_state = ParticleState(

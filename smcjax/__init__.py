@@ -13,8 +13,27 @@ from blackjax.smc.resampling import (
     systematic,
 )
 
+from smcjax.auxiliary import auxiliary_filter
 from smcjax.bootstrap import bootstrap_filter
-from smcjax.containers import ParticleFilterPosterior, ParticleState
+from smcjax.containers import (
+    LiuWestPosterior,
+    ParticleFilterPosterior,
+    ParticleState,
+)
+from smcjax.diagnostics import (
+    crps,
+    log_bayes_factor,
+    log_ml_increments,
+    param_weighted_mean,
+    param_weighted_quantile,
+    particle_diversity,
+    replicated_log_ml,
+    weighted_mean,
+    weighted_quantile,
+    weighted_variance,
+)
+from smcjax.liu_west import liu_west_filter
+from smcjax.simulate import simulate
 from smcjax.weights import log_normalize, normalize
 
 try:
@@ -23,16 +42,30 @@ except _PackageNotFoundError:
     __version__ = '0.0.0'
 
 __all__ = [
+    'LiuWestPosterior',
     'ParticleFilterPosterior',
     'ParticleState',
     '__version__',
+    'auxiliary_filter',
     'bootstrap_filter',
+    'crps',
     'ess',
+    'liu_west_filter',
+    'log_bayes_factor',
     'log_ess',
+    'log_ml_increments',
     'log_normalize',
     'multinomial',
     'normalize',
+    'param_weighted_mean',
+    'param_weighted_quantile',
+    'particle_diversity',
+    'replicated_log_ml',
     'residual',
+    'simulate',
     'stratified',
     'systematic',
+    'weighted_mean',
+    'weighted_quantile',
+    'weighted_variance',
 ]
