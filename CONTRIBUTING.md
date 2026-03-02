@@ -34,8 +34,6 @@ This project follows TDD (Test-Driven Development):
     ```
 8. Open a PR (target < 400 lines changed)
 
-See `.claude/rules/tdd-workflow.md` for the full protocol.
-
 ## Quality Checks
 
 ```bash
@@ -88,4 +86,5 @@ Use [Conventional Commits](https://www.conventionalcommits.org/):
 - Google-style docstrings
 - Type hints on all functions
 
-See `.claude/rules/code-style.md` for full details.
+See `pyproject.toml` `[tool.ruff]` for full linter/formatter
+configuration.
