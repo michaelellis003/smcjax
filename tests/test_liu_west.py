@@ -10,8 +10,8 @@ and the effect of shrinkage on posterior spread.
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+import jax.scipy.stats as jstats
 import pytest
-from tensorflow_probability.substrates.jax import distributions as tfd
 
 from smcjax.liu_west import liu_west_filter
 
@@ -26,6 +26,19 @@ from smcjax.liu_west import liu_west_filter
 # ---------------------------------------------------------------------------
 
 
+def _mvn_sample(key, mean, cov, shape=()):
+    """Sample from a multivariate normal using pure JAX."""
+    chol = jnp.linalg.cholesky(cov)
+    d = mean.shape[-1]
+    z = jr.normal(key, (*shape, d))
+    return mean + z @ chol.T
+
+
+def _mvn_logpdf(x, mean, cov):
+    """Log-pdf of a multivariate normal using jax.scipy."""
+    return jstats.multivariate_normal.logpdf(x, mean, cov)
+
+
 def _make_liu_west_fns():
     """Build closures for Liu-West filter on LGSSM with unknown obs noise."""
     m0 = jnp.array([0.0])
@@ -35,33 +48,27 @@ def _make_liu_west_fns():
     H = jnp.array([[1.0]])
 
     def initial_sampler(key, n):
-        return tfd.MultivariateNormalFullCovariance(m0, P0).sample(n, seed=key)
+        return _mvn_sample(key, m0, P0, shape=(n,))
 
     def transition_sampler(key, state, params):
         mean = (F @ state[:, None]).squeeze(-1)
-        return tfd.MultivariateNormalFullCovariance(mean, Q).sample(seed=key)
+        return _mvn_sample(key, mean, Q)
 
     def log_observation_fn(emission, state, params):
-        # params[0] = log(sigma_y^2), so sigma_y^2 = exp(params[0])
         sigma_y_sq = jnp.exp(params[0])
         R = jnp.array([[sigma_y_sq]], dtype=jnp.float64)
         mean = (H @ state[:, None]).squeeze(-1)
-        return tfd.MultivariateNormalFullCovariance(mean, R).log_prob(emission)
+        return _mvn_logpdf(emission, mean, R)
 
     def log_auxiliary_fn(emission, state, params):
         sigma_y_sq = jnp.exp(params[0])
         R = jnp.array([[sigma_y_sq]], dtype=jnp.float64)
         predicted_mean = (H @ F @ state[:, None]).squeeze(-1)
-        return tfd.MultivariateNormalFullCovariance(
-            predicted_mean, R
-        ).log_prob(emission)
+        return _mvn_logpdf(emission, predicted_mean, R)
 
     def param_initial_sampler(key, n):
         # Prior on log(sigma_y^2) ~ N(0, 0.5^2)
-        # so sigma_y^2 ~ LogNormal(0, 0.5) centered around 1.0
-        return tfd.Normal(jnp.float64(0.0), jnp.float64(0.5)).sample(
-            (n, 1), seed=key
-        )
+        return jnp.float64(0.5) * jr.normal(key, (n, 1))
 
     return (
         initial_sampler,
@@ -132,27 +139,19 @@ class TestLiuWestFixedParamsMatchesAPF:
 
         # APF closures (no params)
         def apf_init(key, n):
-            return tfd.MultivariateNormalFullCovariance(m0, P0).sample(
-                n, seed=key
-            )
+            return _mvn_sample(key, m0, P0, shape=(n,))
 
         def apf_trans(key, state):
             mean = (F @ state[:, None]).squeeze(-1)
-            return tfd.MultivariateNormalFullCovariance(mean, Q).sample(
-                seed=key
-            )
+            return _mvn_sample(key, mean, Q)
 
         def apf_obs(emission, state):
             mean = (H @ state[:, None]).squeeze(-1)
-            return tfd.MultivariateNormalFullCovariance(mean, R).log_prob(
-                emission
-            )
+            return _mvn_logpdf(emission, mean, R)
 
         def apf_aux(emission, state):
             pred = (H @ F @ state[:, None]).squeeze(-1)
-            return tfd.MultivariateNormalFullCovariance(pred, R).log_prob(
-                emission
-            )
+            return _mvn_logpdf(emission, pred, R)
 
         # Liu-West closures (params ignored since fixed)
         def lw_init(key, n):
@@ -257,29 +256,21 @@ class TestLiuWestJIT:
         H = jnp.array([[1.0]])
 
         def init(key, n):
-            return tfd.MultivariateNormalFullCovariance(m0, P0).sample(
-                n, seed=key
-            )
+            return _mvn_sample(key, m0, P0, shape=(n,))
 
         def trans(key, state, params):
             mean = (F @ state[:, None]).squeeze(-1)
-            return tfd.MultivariateNormalFullCovariance(mean, Q).sample(
-                seed=key
-            )
+            return _mvn_sample(key, mean, Q)
 
         def obs(emission, state, params):
             R = jnp.array([[jnp.exp(params[0])]])
             mean = (H @ state[:, None]).squeeze(-1)
-            return tfd.MultivariateNormalFullCovariance(mean, R).log_prob(
-                emission
-            )
+            return _mvn_logpdf(emission, mean, R)
 
         def aux(emission, state, params):
             R = jnp.array([[jnp.exp(params[0])]])
             pred = (H @ F @ state[:, None]).squeeze(-1)
-            return tfd.MultivariateNormalFullCovariance(pred, R).log_prob(
-                emission
-            )
+            return _mvn_logpdf(emission, pred, R)
 
         def param_init(key, n):
             return jnp.zeros((n, 1))
@@ -304,3 +295,82 @@ class TestLiuWestJIT:
         assert result.filtered_particles.shape == (10, 50, 1)
         assert result.filtered_params.shape == (10, 50, 1)
         assert jnp.isfinite(result.marginal_loglik)
+
+
+class TestLiuWestLogEvidenceIncrements:
+    """log_evidence_increments field should be consistent."""
+
+    def test_log_evidence_increments_shape(self, lgssm_params, lgssm_data):
+        """Shape should be (ntime,)."""
+        _, emissions = lgssm_data
+        (
+            init_fn,
+            trans_fn,
+            obs_fn,
+            aux_fn,
+            param_init_fn,
+        ) = _make_liu_west_fns()
+
+        post = liu_west_filter(
+            key=jr.PRNGKey(0),
+            initial_sampler=init_fn,
+            transition_sampler=trans_fn,
+            log_observation_fn=obs_fn,
+            log_auxiliary_fn=aux_fn,
+            param_initial_sampler=param_init_fn,
+            emissions=emissions,
+            num_particles=500,
+            shrinkage=0.95,
+        )
+        assert post.log_evidence_increments.shape == (emissions.shape[0],)
+
+    def test_log_evidence_increments_sum_to_marginal(
+        self, lgssm_params, lgssm_data
+    ):
+        """Increments should sum to marginal_loglik."""
+        _, emissions = lgssm_data
+        (
+            init_fn,
+            trans_fn,
+            obs_fn,
+            aux_fn,
+            param_init_fn,
+        ) = _make_liu_west_fns()
+
+        post = liu_west_filter(
+            key=jr.PRNGKey(0),
+            initial_sampler=init_fn,
+            transition_sampler=trans_fn,
+            log_observation_fn=obs_fn,
+            log_auxiliary_fn=aux_fn,
+            param_initial_sampler=param_init_fn,
+            emissions=emissions,
+            num_particles=500,
+            shrinkage=0.95,
+        )
+        total = float(jnp.sum(post.log_evidence_increments))
+        assert total == pytest.approx(float(post.marginal_loglik), abs=1e-6)
+
+    def test_log_evidence_increments_finite(self, lgssm_params, lgssm_data):
+        """All increments should be finite."""
+        _, emissions = lgssm_data
+        (
+            init_fn,
+            trans_fn,
+            obs_fn,
+            aux_fn,
+            param_init_fn,
+        ) = _make_liu_west_fns()
+
+        post = liu_west_filter(
+            key=jr.PRNGKey(0),
+            initial_sampler=init_fn,
+            transition_sampler=trans_fn,
+            log_observation_fn=obs_fn,
+            log_auxiliary_fn=aux_fn,
+            param_initial_sampler=param_init_fn,
+            emissions=emissions,
+            num_particles=500,
+            shrinkage=0.95,
+        )
+        assert jnp.all(jnp.isfinite(post.log_evidence_increments))

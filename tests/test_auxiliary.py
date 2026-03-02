@@ -9,8 +9,8 @@ Cross-validates against:
 
 import jax.numpy as jnp
 import jax.random as jr
+import jax.scipy.stats as jstats
 import pytest
-from tensorflow_probability.substrates.jax import distributions as tfd
 
 from smcjax.auxiliary import auxiliary_filter
 from smcjax.bootstrap import bootstrap_filter
@@ -18,6 +18,19 @@ from smcjax.bootstrap import bootstrap_filter
 # ---------------------------------------------------------------------------
 # Helpers to define the LGSSM for smcjax APF
 # ---------------------------------------------------------------------------
+
+
+def _mvn_sample(key, mean, cov, shape=()):
+    """Sample from a multivariate normal using pure JAX."""
+    chol = jnp.linalg.cholesky(cov)
+    d = mean.shape[-1]
+    z = jr.normal(key, (*shape, d))
+    return mean + z @ chol.T
+
+
+def _mvn_logpdf(x, mean, cov):
+    """Log-pdf of a multivariate normal using jax.scipy."""
+    return jstats.multivariate_normal.logpdf(x, mean, cov)
 
 
 def _make_smcjax_fns(lgssm_params):
@@ -30,22 +43,20 @@ def _make_smcjax_fns(lgssm_params):
     R = lgssm_params['emissions_cov']
 
     def initial_sampler(key, n):
-        return tfd.MultivariateNormalFullCovariance(m0, P0).sample(n, seed=key)
+        return _mvn_sample(key, m0, P0, shape=(n,))
 
     def transition_sampler(key, state):
         mean = (F @ state[:, None]).squeeze(-1)
-        return tfd.MultivariateNormalFullCovariance(mean, Q).sample(seed=key)
+        return _mvn_sample(key, mean, Q)
 
     def log_observation_fn(emission, state):
         mean = (H @ state[:, None]).squeeze(-1)
-        return tfd.MultivariateNormalFullCovariance(mean, R).log_prob(emission)
+        return _mvn_logpdf(emission, mean, R)
 
     def log_auxiliary_fn(emission, state):
         """Look-ahead: p(y_{t+1} | mu_{t+1}) where mu = F @ x_t."""
         predicted_mean = (H @ F @ state[:, None]).squeeze(-1)
-        return tfd.MultivariateNormalFullCovariance(
-            predicted_mean, R
-        ).log_prob(emission)
+        return _mvn_logpdf(emission, predicted_mean, R)
 
     return (
         initial_sampler,
@@ -170,3 +181,55 @@ class TestAuxiliaryESSTrace:
         )
         assert jnp.all(pf.ess >= 0.9)  # ESS >= ~1
         assert jnp.all(pf.ess <= n + 0.1)
+
+
+class TestAuxiliaryLogEvidenceIncrements:
+    """log_evidence_increments field should be consistent."""
+
+    def test_log_evidence_increments_shape(self, lgssm_params, lgssm_data):
+        """Shape should be (ntime,)."""
+        _, emissions = lgssm_data
+        init_fn, trans_fn, obs_fn, aux_fn = _make_smcjax_fns(lgssm_params)
+        pf = auxiliary_filter(
+            key=jr.PRNGKey(0),
+            initial_sampler=init_fn,
+            transition_sampler=trans_fn,
+            log_observation_fn=obs_fn,
+            log_auxiliary_fn=aux_fn,
+            emissions=emissions,
+            num_particles=1_000,
+        )
+        assert pf.log_evidence_increments.shape == (emissions.shape[0],)
+
+    def test_log_evidence_increments_sum_to_marginal(
+        self, lgssm_params, lgssm_data
+    ):
+        """Increments should sum to marginal_loglik."""
+        _, emissions = lgssm_data
+        init_fn, trans_fn, obs_fn, aux_fn = _make_smcjax_fns(lgssm_params)
+        pf = auxiliary_filter(
+            key=jr.PRNGKey(0),
+            initial_sampler=init_fn,
+            transition_sampler=trans_fn,
+            log_observation_fn=obs_fn,
+            log_auxiliary_fn=aux_fn,
+            emissions=emissions,
+            num_particles=1_000,
+        )
+        total = float(jnp.sum(pf.log_evidence_increments))
+        assert total == pytest.approx(float(pf.marginal_loglik), abs=1e-6)
+
+    def test_log_evidence_increments_finite(self, lgssm_params, lgssm_data):
+        """All increments should be finite."""
+        _, emissions = lgssm_data
+        init_fn, trans_fn, obs_fn, aux_fn = _make_smcjax_fns(lgssm_params)
+        pf = auxiliary_filter(
+            key=jr.PRNGKey(0),
+            initial_sampler=init_fn,
+            transition_sampler=trans_fn,
+            log_observation_fn=obs_fn,
+            log_auxiliary_fn=aux_fn,
+            emissions=emissions,
+            num_particles=1_000,
+        )
+        assert jnp.all(jnp.isfinite(pf.log_evidence_increments))

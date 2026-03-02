@@ -5,11 +5,24 @@
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+import jax.scipy.stats as jstats
 import pytest
-from tensorflow_probability.substrates.jax import distributions as tfd
 
 from smcjax import ess, log_ess, multinomial, residual, stratified, systematic
 from smcjax.weights import log_normalize, normalize
+
+
+def _mvn_sample(key, mean, cov, shape=()):
+    """Sample from a multivariate normal using pure JAX."""
+    chol = jnp.linalg.cholesky(cov)
+    d = mean.shape[-1]
+    z = jr.normal(key, (*shape, d))
+    return mean + z @ chol.T
+
+
+def _mvn_logpdf(x, mean, cov):
+    """Log-pdf of a multivariate normal using jax.scipy."""
+    return jstats.multivariate_normal.logpdf(x, mean, cov)
 
 
 class TestWeightsJIT:
@@ -89,21 +102,15 @@ class TestBootstrapJIT:
         R = jnp.array([[1.0]])
 
         def init(key, n):
-            return tfd.MultivariateNormalFullCovariance(m0, P0).sample(
-                n, seed=key
-            )
+            return _mvn_sample(key, m0, P0, shape=(n,))
 
         def trans(key, state):
             mean = (F @ state[:, None]).squeeze(-1)
-            return tfd.MultivariateNormalFullCovariance(mean, Q).sample(
-                seed=key
-            )
+            return _mvn_sample(key, mean, Q)
 
         def obs(emission, state):
             mean = (H @ state[:, None]).squeeze(-1)
-            return tfd.MultivariateNormalFullCovariance(mean, R).log_prob(
-                emission
-            )
+            return _mvn_logpdf(emission, mean, R)
 
         emissions = jnp.ones((10, 1))
 
@@ -137,27 +144,19 @@ class TestAuxiliaryJIT:
         R = jnp.array([[1.0]])
 
         def init(key, n):
-            return tfd.MultivariateNormalFullCovariance(m0, P0).sample(
-                n, seed=key
-            )
+            return _mvn_sample(key, m0, P0, shape=(n,))
 
         def trans(key, state):
             mean = (F @ state[:, None]).squeeze(-1)
-            return tfd.MultivariateNormalFullCovariance(mean, Q).sample(
-                seed=key
-            )
+            return _mvn_sample(key, mean, Q)
 
         def obs(emission, state):
             mean = (H @ state[:, None]).squeeze(-1)
-            return tfd.MultivariateNormalFullCovariance(mean, R).log_prob(
-                emission
-            )
+            return _mvn_logpdf(emission, mean, R)
 
         def aux(emission, state):
             pred = (H @ F @ state[:, None]).squeeze(-1)
-            return tfd.MultivariateNormalFullCovariance(pred, R).log_prob(
-                emission
-            )
+            return _mvn_logpdf(emission, pred, R)
 
         emissions = jnp.ones((10, 1))
 

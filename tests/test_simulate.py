@@ -9,9 +9,16 @@ moments of a linear Gaussian SSM, and JIT compatibility.
 import jax
 import jax.numpy as jnp
 import jax.random as jr
-from tensorflow_probability.substrates.jax import distributions as tfd
 
 from smcjax.simulate import simulate
+
+
+def _mvn_sample(key, mean, cov, shape=()):
+    """Sample from a multivariate normal using pure JAX."""
+    chol = jnp.linalg.cholesky(cov)
+    d = mean.shape[-1]
+    z = jr.normal(key, (*shape, d))
+    return mean + z @ chol.T
 
 
 def _make_lgssm_samplers(lgssm_params):
@@ -24,15 +31,15 @@ def _make_lgssm_samplers(lgssm_params):
     R = lgssm_params['emissions_cov']
 
     def initial_sampler(key):
-        return tfd.MultivariateNormalFullCovariance(m0, P0).sample(seed=key)
+        return _mvn_sample(key, m0, P0)
 
     def transition_sampler(key, state):
         mean = (F @ state[:, None]).squeeze(-1)
-        return tfd.MultivariateNormalFullCovariance(mean, Q).sample(seed=key)
+        return _mvn_sample(key, mean, Q)
 
     def emission_sampler(key, state):
         mean = (H @ state[:, None]).squeeze(-1)
-        return tfd.MultivariateNormalFullCovariance(mean, R).sample(seed=key)
+        return _mvn_sample(key, mean, R)
 
     return initial_sampler, transition_sampler, emission_sampler
 
