@@ -21,8 +21,11 @@ from smcjax.containers import (
     ParticleState,
 )
 from smcjax.diagnostics import (
+    crps,
     log_bayes_factor,
     log_ml_increments,
+    param_weighted_mean,
+    param_weighted_quantile,
     particle_diversity,
     replicated_log_ml,
     weighted_mean,
@@ -45,6 +48,7 @@ __all__ = [
     '__version__',
     'auxiliary_filter',
     'bootstrap_filter',
+    'crps',
     'ess',
     'liu_west_filter',
     'log_bayes_factor',
@@ -53,6 +57,8 @@ __all__ = [
     'log_normalize',
     'multinomial',
     'normalize',
+    'param_weighted_mean',
+    'param_weighted_quantile',
     'particle_diversity',
     'replicated_log_ml',
     'residual',

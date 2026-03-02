@@ -93,7 +93,7 @@ def bootstrap_filter(
     def _step(
         carry: ParticleState,
         args: tuple[PRNGKeyT, Float[Array, ' emission_dim']],
-    ) -> tuple[ParticleState, tuple[Array, Array, Array, Array]]:
+    ) -> tuple[ParticleState, tuple[Array, Array, Array, Array, Array]]:
         state, (step_key, y_t) = carry, args
         k1, k2 = jr.split(step_key)
 
@@ -142,7 +142,13 @@ def bootstrap_filter(
             ),
         )
         ess_t: Array = jnp.asarray(compute_ess(log_w_norm))
-        return new_state, (propagated, log_w_norm, ancestors, ess_t)
+        return new_state, (
+            propagated,
+            log_w_norm,
+            ancestors,
+            ess_t,
+            log_ev_inc,
+        )
 
     # Run the scan over t = 1 ... T-1
     step_keys = jr.split(key, emissions.shape[0] - 1)
@@ -153,6 +159,7 @@ def bootstrap_filter(
             log_w_rest,
             ancestors_rest,
             ess_rest,
+            log_ev_inc_rest,
         ),
     ) = lax.scan(_step, init_state, (step_keys, emissions[1:]))
 
@@ -165,6 +172,7 @@ def bootstrap_filter(
     all_ancestors = _prepend(identity_ancestors, ancestors_rest)
     ess_0_arr: Array = jnp.asarray(ess_0)
     all_ess = _prepend(ess_0_arr, ess_rest)
+    all_log_ev_inc = _prepend(jnp.asarray(log_ev_0), log_ev_inc_rest)
 
     return ParticleFilterPosterior(
         marginal_loglik=final_state.log_marginal_likelihood,
@@ -172,4 +180,5 @@ def bootstrap_filter(
         filtered_log_weights=all_log_w,
         ancestors=all_ancestors,
         ess=all_ess,
+        log_evidence_increments=all_log_ev_inc,
     )

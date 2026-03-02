@@ -9,8 +9,8 @@ mathematical properties of diagnostic functions.
 import jax
 import jax.numpy as jnp
 import jax.random as jr
+import jax.scipy.stats as jstats
 import pytest
-from tensorflow_probability.substrates.jax import distributions as tfd
 
 from smcjax.bootstrap import bootstrap_filter
 from smcjax.diagnostics import (
@@ -24,6 +24,19 @@ from smcjax.diagnostics import (
 )
 
 
+def _mvn_sample(key, mean, cov, shape=()):
+    """Sample from a multivariate normal using pure JAX."""
+    chol = jnp.linalg.cholesky(cov)
+    d = mean.shape[-1]
+    z = jr.normal(key, (*shape, d))
+    return mean + z @ chol.T
+
+
+def _mvn_logpdf(x, mean, cov):
+    """Log-pdf of a multivariate normal using jax.scipy."""
+    return jstats.multivariate_normal.logpdf(x, mean, cov)
+
+
 def _make_smcjax_fns(lgssm_params):
     """Build (initial_sampler, transition_sampler, log_obs_fn)."""
     m0 = lgssm_params['initial_mean']
@@ -34,15 +47,15 @@ def _make_smcjax_fns(lgssm_params):
     R = lgssm_params['emissions_cov']
 
     def initial_sampler(key, n):
-        return tfd.MultivariateNormalFullCovariance(m0, P0).sample(n, seed=key)
+        return _mvn_sample(key, m0, P0, shape=(n,))
 
     def transition_sampler(key, state):
         mean = (F @ state[:, None]).squeeze(-1)
-        return tfd.MultivariateNormalFullCovariance(mean, Q).sample(seed=key)
+        return _mvn_sample(key, mean, Q)
 
     def log_observation_fn(emission, state):
         mean = (H @ state[:, None]).squeeze(-1)
-        return tfd.MultivariateNormalFullCovariance(mean, R).log_prob(emission)
+        return _mvn_logpdf(emission, mean, R)
 
     return initial_sampler, transition_sampler, log_observation_fn
 
@@ -105,6 +118,7 @@ class TestWeightedVariance:
             filtered_log_weights=uniform_log_w,
             ancestors=pf_post.ancestors,
             ess=pf_post.ess,
+            log_evidence_increments=pf_post.log_evidence_increments,
         )
 
         wvar = weighted_variance(uniform_post)
@@ -244,3 +258,201 @@ class TestReplicatedLogML:
 
         result = replicated_log_ml(jr.PRNGKey(1), filter_fn, num_replicates=20)
         assert float(jnp.var(result)) > 0.0
+
+
+class TestParamWeightedMean:
+    """Tests for param_weighted_mean."""
+
+    def test_param_weighted_mean_shape(self, lgssm_params, lgssm_data):
+        """Output shape should be (ntime, param_dim)."""
+        from smcjax.diagnostics import param_weighted_mean
+        from smcjax.liu_west import liu_west_filter
+
+        _, emissions = lgssm_data
+        m0 = lgssm_params['initial_mean']
+        P0 = lgssm_params['initial_cov']
+        F = lgssm_params['dynamics_weights']
+        Q = lgssm_params['dynamics_cov']
+        H = lgssm_params['emissions_weights']
+        R = lgssm_params['emissions_cov']
+
+        def init(key, n):
+            return _mvn_sample(key, m0, P0, shape=(n,))
+
+        def trans(key, state, params):
+            mean = (F @ state[:, None]).squeeze(-1)
+            return _mvn_sample(key, mean, Q)
+
+        def obs(emission, state, params):
+            mean = (H @ state[:, None]).squeeze(-1)
+            return _mvn_logpdf(emission, mean, R)
+
+        def aux(emission, state, params):
+            pred = (H @ F @ state[:, None]).squeeze(-1)
+            return _mvn_logpdf(emission, pred, R)
+
+        def param_init(key, n):
+            return jnp.zeros((n, 1))
+
+        post = liu_west_filter(
+            key=jr.PRNGKey(42),
+            initial_sampler=init,
+            transition_sampler=trans,
+            log_observation_fn=obs,
+            log_auxiliary_fn=aux,
+            param_initial_sampler=param_init,
+            emissions=emissions,
+            num_particles=500,
+            shrinkage=0.95,
+        )
+
+        result = param_weighted_mean(post)
+        ntime = emissions.shape[0]
+        assert result.shape == (ntime, 1)
+        assert jnp.all(jnp.isfinite(result))
+
+    def test_param_weighted_mean_finite_values(self, lgssm_params, lgssm_data):
+        """All param mean values should be finite."""
+        from smcjax.diagnostics import param_weighted_mean
+        from smcjax.liu_west import liu_west_filter
+
+        _, emissions = lgssm_data
+        m0 = lgssm_params['initial_mean']
+        P0 = lgssm_params['initial_cov']
+        F = lgssm_params['dynamics_weights']
+        Q = lgssm_params['dynamics_cov']
+        H = lgssm_params['emissions_weights']
+        R = lgssm_params['emissions_cov']
+
+        def init(key, n):
+            return _mvn_sample(key, m0, P0, shape=(n,))
+
+        def trans(key, state, params):
+            mean = (F @ state[:, None]).squeeze(-1)
+            return _mvn_sample(key, mean, Q)
+
+        def obs(emission, state, params):
+            mean = (H @ state[:, None]).squeeze(-1)
+            return _mvn_logpdf(emission, mean, R)
+
+        def aux(emission, state, params):
+            pred = (H @ F @ state[:, None]).squeeze(-1)
+            return _mvn_logpdf(emission, pred, R)
+
+        def param_init(key, n):
+            return jnp.zeros((n, 1))
+
+        post = liu_west_filter(
+            key=jr.PRNGKey(7),
+            initial_sampler=init,
+            transition_sampler=trans,
+            log_observation_fn=obs,
+            log_auxiliary_fn=aux,
+            param_initial_sampler=param_init,
+            emissions=emissions,
+            num_particles=500,
+            shrinkage=0.95,
+        )
+
+        param_means = param_weighted_mean(post)
+        ntime = emissions.shape[0]
+        assert param_means.shape == (ntime, 1)
+        assert jnp.all(jnp.isfinite(param_means))
+
+
+class TestParamWeightedQuantile:
+    """Tests for param_weighted_quantile."""
+
+    def test_param_weighted_quantile_monotone(self, lgssm_params, lgssm_data):
+        """Lower quantile <= upper quantile at every step."""
+        from smcjax.diagnostics import param_weighted_quantile
+        from smcjax.liu_west import liu_west_filter
+
+        _, emissions = lgssm_data
+        m0 = lgssm_params['initial_mean']
+        P0 = lgssm_params['initial_cov']
+        F = lgssm_params['dynamics_weights']
+        Q = lgssm_params['dynamics_cov']
+        H = lgssm_params['emissions_weights']
+        R = lgssm_params['emissions_cov']
+
+        def init(key, n):
+            return _mvn_sample(key, m0, P0, shape=(n,))
+
+        def trans(key, state, params):
+            mean = (F @ state[:, None]).squeeze(-1)
+            return _mvn_sample(key, mean, Q)
+
+        def obs(emission, state, params):
+            mean = (H @ state[:, None]).squeeze(-1)
+            return _mvn_logpdf(emission, mean, R)
+
+        def aux(emission, state, params):
+            pred = (H @ F @ state[:, None]).squeeze(-1)
+            return _mvn_logpdf(emission, pred, R)
+
+        def param_init(key, n):
+            return jnp.zeros((n, 1))
+
+        post = liu_west_filter(
+            key=jr.PRNGKey(42),
+            initial_sampler=init,
+            transition_sampler=trans,
+            log_observation_fn=obs,
+            log_auxiliary_fn=aux,
+            param_initial_sampler=param_init,
+            emissions=emissions,
+            num_particles=500,
+            shrinkage=0.95,
+        )
+
+        q = jnp.array([0.025, 0.5, 0.975])
+        result = param_weighted_quantile(post, q)
+        ntime = emissions.shape[0]
+        assert result.shape == (ntime, 3, 1)
+        # Monotonicity: q025 <= q50 <= q975
+        assert jnp.all(result[:, 0, :] <= result[:, 1, :])
+        assert jnp.all(result[:, 1, :] <= result[:, 2, :])
+
+
+class TestCRPS:
+    """Tests for crps."""
+
+    def test_crps_nonnegative(self):
+        """CRPS should always be non-negative."""
+        from smcjax.diagnostics import crps
+
+        predictions = jnp.array([1.0, 2.0, 3.0, 4.0, 5.0])
+        result = crps(predictions, jnp.float64(3.0))
+        assert float(result) >= 0.0
+
+    def test_crps_zero_for_perfect_prediction(self):
+        """CRPS = 0 when all predictions equal observation."""
+        from smcjax.diagnostics import crps
+
+        obs = jnp.float64(5.0)
+        predictions = jnp.full(100, 5.0)
+        result = crps(predictions, obs)
+        assert float(result) == pytest.approx(0.0, abs=1e-10)
+
+    def test_crps_known_value(self):
+        """CRPS for known distribution matches analytical result."""
+        from smcjax.diagnostics import crps
+
+        # For predictions = {0, 1} with equal weight, obs = 0.5:
+        # E|Y - y| = 0.5*(|0-0.5| + |1-0.5|) = 0.5
+        # E|Y - Y'| = 0.5*(|0-0| + |0-1| + |1-0| + |1-1|)/2
+        #           = 0.5*(0 + 1 + 1 + 0)/2 but actually:
+        # E|Y-Y'| = mean of all |yi-yj| = (0+1+1+0)/4 = 0.5
+        # CRPS = 0.5 - 0.5*0.5 = 0.25
+        predictions = jnp.array([0.0, 1.0])
+        result = crps(predictions, jnp.float64(0.5))
+        assert float(result) == pytest.approx(0.25, abs=1e-10)
+
+    def test_crps_jit_compatible(self):
+        """CRPS should work under jax.jit."""
+        from smcjax.diagnostics import crps
+
+        predictions = jnp.array([1.0, 2.0, 3.0])
+        result = jax.jit(crps)(predictions, jnp.float64(2.0))
+        assert jnp.isfinite(result)

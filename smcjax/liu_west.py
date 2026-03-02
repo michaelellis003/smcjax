@@ -151,7 +151,7 @@ def liu_west_filter(
     def _step(
         carry: _Carry,
         args: tuple[PRNGKeyT, Array],
-    ) -> tuple[_Carry, tuple[Array, Array, Array, Array, Array]]:
+    ) -> tuple[_Carry, tuple[Array, Array, Array, Array, Array, Array]]:
         particles, params, log_weights, log_ml = carry
         step_key, y_t = args
         k1, k2, k3 = jr.split(step_key, 3)
@@ -223,6 +223,7 @@ def liu_west_filter(
             log_w_norm,
             ancestors,
             ess_t,
+            log_ev_inc,
         )
 
     init_carry: _Carry = (particles_0, params_0, log_w_0, log_ev_0)
@@ -236,6 +237,7 @@ def liu_west_filter(
             log_w_rest,
             ancestors_rest,
             ess_rest,
+            log_ev_inc_rest,
         ),
     ) = lax.scan(_step, init_carry, (step_keys, emissions[1:]))
 
@@ -254,5 +256,8 @@ def liu_west_filter(
         filtered_log_weights=_prepend(log_w_0, log_w_rest),
         ancestors=_prepend(identity_ancestors, ancestors_rest),
         ess=_prepend(jnp.asarray(ess_0), ess_rest),
+        log_evidence_increments=_prepend(
+            jnp.asarray(log_ev_0), log_ev_inc_rest
+        ),
         filtered_params=_prepend(params_0, params_rest),
     )

@@ -9,6 +9,8 @@ uncertainty*; McElreath: *always report intervals, not just means*):
 - :func:`weighted_variance` — weighted posterior variance
 - :func:`weighted_quantile` — weighted quantiles for credible
   intervals
+- :func:`param_weighted_mean` — weighted parameter mean (Liu-West)
+- :func:`param_weighted_quantile` — weighted parameter quantiles
 
 Computational faithfulness (Vehtari: *can we trust the computation?*):
 
@@ -20,8 +22,13 @@ Model comparison:
 - :func:`log_bayes_factor` — log Bayes factor between two models
 - :func:`replicated_log_ml` — Monte Carlo variability of log-ML
 
+Scoring rules:
+
+- :func:`crps` — Continuous Ranked Probability Score
+
 All functions are pure, stateless, operate on arrays from
-:class:`~smcjax.containers.ParticleFilterPosterior`, and are
+:class:`~smcjax.containers.ParticleFilterPosterior` or
+:class:`~smcjax.containers.LiuWestPosterior`, and are
 JIT-compatible.
 """
 
@@ -32,7 +39,7 @@ import jax.random as jr
 from jax import vmap
 from jaxtyping import Array, Float, Int
 
-from smcjax.containers import ParticleFilterPosterior
+from smcjax.containers import LiuWestPosterior, ParticleFilterPosterior
 from smcjax.types import PRNGKeyT, Scalar
 from smcjax.weights import normalize
 
@@ -137,12 +144,6 @@ def log_ml_increments(
     This function returns the individual increments, which diagnose
     which observations are hardest for the model.
 
-    Note: this reconstructs increments from the cumulative log-ML
-    stored in the filtered log-weights and ESS.  Since the
-    :class:`ParticleFilterPosterior` stores only the total
-    ``marginal_loglik``, we recompute per-step increments from the
-    filtered log-weights.
-
     Args:
         posterior: Particle filter posterior output.
 
@@ -150,47 +151,7 @@ def log_ml_increments(
         Per-step evidence increments, shape ``(ntime,)``.  These sum
         to ``posterior.marginal_loglik``.
     """
-    log_w = posterior.filtered_log_weights
-
-    # At each step, the evidence increment is encoded in the
-    # unnormalised weights before normalisation.  Since we only
-    # store normalised weights, we reconstruct from the total
-    # marginal_loglik.
-    #
-    # For the bootstrap filter with always-resample:
-    #   log p(y_t | y_{1:t-1}) = logsumexp(log_obs_t) - log(N)
-    #
-    # We can extract the per-step observation log-likelihood
-    # from the normalised weights (which have logsumexp = 0):
-    #   logsumexp(log_w_norm) = 0 always
-    #
-    # The total marginal_loglik = sum of increments, but we don't
-    # have access to the unnormalised weights.  As a practical
-    # solution, we distribute the total evenly as a baseline and
-    # adjust by the weight entropy at each step.
-    #
-    # Actually, we recompute from the normalised log weights.
-    # The per-step normalising constant (lost after normalisation)
-    # encodes the evidence.  We use the relationship:
-    #   total = sum of increments
-    # and approximate relative increments from weight uniformity.
-
-    # Compute per-step "effective log-likelihood" from weight
-    # concentration.  When weights are uniform, log-evidence is
-    # high; when concentrated, it's low.
-    #
-    # Use log-weight entropy as proxy for relative contribution.
-    weights = vmap(normalize)(log_w)  # (ntime, num_particles)
-    log_weights_safe = jnp.log(jnp.clip(weights, 1e-300, None))
-    entropy = -jnp.sum(weights * log_weights_safe, axis=1)
-
-    # Scale entropies to sum to total marginal loglik
-    total = posterior.marginal_loglik
-    entropy_sum = jnp.sum(entropy)
-    # Avoid division by zero
-    _eps = 1e-10
-    scale = total / jnp.where(jnp.abs(entropy_sum) > _eps, entropy_sum, 1.0)
-    return entropy * scale
+    return posterior.log_evidence_increments
 
 
 def particle_diversity(
@@ -279,3 +240,91 @@ def replicated_log_ml(
     """
     keys = jr.split(key, num_replicates)
     return jnp.asarray(vmap(filter_fn)(keys))
+
+
+def param_weighted_mean(
+    posterior: LiuWestPosterior,
+) -> Float[Array, 'ntime param_dim']:
+    r"""Compute the weighted mean of parameter particles at each step.
+
+    Args:
+        posterior: Liu-West filter posterior output.
+
+    Returns:
+        Weighted parameter means, shape ``(ntime, param_dim)``.
+    """
+    weights = vmap(normalize)(posterior.filtered_log_weights)
+    return jnp.einsum('tn,tnd->td', weights, posterior.filtered_params)
+
+
+def param_weighted_quantile(
+    posterior: LiuWestPosterior,
+    q: Float[Array, ' num_quantiles'],
+) -> Float[Array, 'ntime num_quantiles param_dim']:
+    r"""Compute weighted quantiles of parameter particles at each step.
+
+    Args:
+        posterior: Liu-West filter posterior output.
+        q: Quantile levels in [0, 1], e.g. ``jnp.array([0.025, 0.975])``
+            for a 95% credible interval.
+
+    Returns:
+        Weighted quantiles, shape ``(ntime, num_quantiles, param_dim)``.
+    """
+    params = posterior.filtered_params
+    weights = vmap(normalize)(posterior.filtered_log_weights)
+
+    def _quantile_one_time_dim(
+        p: Float[Array, ' num_particles'],
+        w: Float[Array, ' num_particles'],
+    ) -> Float[Array, ' num_quantiles']:
+        """Compute quantiles for one time step, one param dim."""
+        sort_idx = jnp.argsort(p)
+        p_sorted = p[sort_idx]
+        w_sorted = w[sort_idx]
+        cum_w = jnp.cumsum(w_sorted)
+        return jnp.interp(q, cum_w, p_sorted)
+
+    def _quantile_one_time(
+        params_t: Float[Array, 'num_particles param_dim'],
+        weights_t: Float[Array, ' num_particles'],
+    ) -> Float[Array, 'num_quantiles param_dim']:
+        """Compute quantiles for one time step, all param dims."""
+        return vmap(_quantile_one_time_dim, in_axes=(1, None))(
+            params_t, weights_t
+        ).T
+
+    return vmap(_quantile_one_time)(params, weights)
+
+
+def crps(
+    predictions: Float[Array, ' num_samples'],
+    observation: Scalar,
+) -> Scalar:
+    r"""Compute the Continuous Ranked Probability Score.
+
+    CRPS is a proper scoring rule for probabilistic forecasts:
+
+    .. math::
+
+        \text{CRPS} = \mathbb{E}|Y - y|
+                     - \tfrac{1}{2}\,\mathbb{E}|Y - Y'|
+
+    where :math:`Y, Y'` are iid predictive samples and :math:`y`
+    is the observation.
+
+    Args:
+        predictions: iid samples from the predictive distribution.
+        observation: Observed scalar value.
+
+    Returns:
+        Scalar CRPS (lower is better, zero for perfect prediction).
+    """
+    obs = jnp.asarray(observation)
+    abs_errors = jnp.abs(predictions - obs)
+    # E|Y - y|
+    term1 = jnp.mean(abs_errors)
+    # E|Y - Y'| via all-pairs (efficient for moderate sample sizes)
+    diffs = jnp.abs(predictions[:, None] - predictions[None, :])
+    term2 = jnp.mean(diffs)
+    return jnp.asarray(term1 - 0.5 * term2)
