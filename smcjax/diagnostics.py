@@ -714,7 +714,7 @@ def diagnose(
         - ``max_pareto_k``: maximum Pareto-k across time steps
         - ``min_tail_ess``: minimum tail-ESS across time steps
         - ``ess_below_threshold``: count of steps where
-          ESS < ``ess_threshold * N``
+            ESS < ``ess_threshold * N``
         - ``warnings``: list of diagnostic warning strings
     """
     n = posterior.filtered_particles.shape[1]
