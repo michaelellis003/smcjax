@@ -5,8 +5,8 @@
 1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/)
 2. Clone and install dependencies:
     ```bash
-    git clone <repo-url>
-    cd <repo>
+    git clone https://github.com/michaelellis003/smcjax.git
+    cd smcjax
     uv sync
     ```
 3. Enable pre-commit hooks:
