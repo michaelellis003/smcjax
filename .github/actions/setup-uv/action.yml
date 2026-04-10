@@ -3,8 +3,9 @@ description: 'Install uv and sync project dependencies'
 
 inputs:
   python-version:
-    description: 'Python version to install. If omitted, uv reads pyproject.toml or .python-version'
+    description: 'Python version to install. Defaults to 3.12 to keep all utility jobs on a single supported interpreter; the pytest matrix passes its own version.'
     required: false
+    default: '3.12'
   locked:
     description: 'Use --locked flag for uv sync. Set to false after version bumps that invalidate the lockfile.'
     required: false
