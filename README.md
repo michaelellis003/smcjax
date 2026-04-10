@@ -11,8 +11,8 @@ Sequential Monte Carlo and particle filtering in JAX.
 on sequential inference for Hidden Markov Models (University of
 Arkansas, 2018). It extends [Dynamax](https://github.com/probml/dynamax)
 and [BlackJAX](https://github.com/blackjax-devs/blackjax) with particle
-filters and Bayesian workflow diagnostics that neither library provides.
-All filters are JIT-compiled via `jax.lax.scan` and GPU-ready.
+filters and Bayesian workflow diagnostics. All filters are JIT-compiled via
+`jax.lax.scan` and GPU-ready.
 
 ## Features
 
@@ -112,54 +112,6 @@ print(f"Mean ESS: {posterior.ess.mean():.1f}")
 means = weighted_mean(posterior)
 increments = log_ml_increments(posterior)
 ```
-
-## Architecture
-
-```
-src/smcjax/
-    __init__.py          # Public API (re-exports BlackJAX ESS & resampling)
-    types.py             # PRNGKeyT, Scalar (matches Dynamax)
-    containers.py        # ParticleState, ParticleFilterPosterior, LiuWestPosterior
-    weights.py           # log_normalize, normalize
-    bootstrap.py         # Bootstrap (SIR) particle filter
-    auxiliary.py         # Auxiliary particle filter (Pitt & Shephard 1999)
-    liu_west.py          # Liu-West filter for joint state-parameter estimation
-    simulate.py          # Forward simulation from state-space models
-    diagnostics.py       # Posterior summaries, model comparison, scoring rules
-```
-
-ESS and resampling (systematic, stratified, multinomial, residual) are
-provided by [BlackJAX](https://github.com/blackjax-devs/blackjax) and
-re-exported from `smcjax` for convenience.
-
-## Cross-validation
-
-All filters are tested against reference libraries:
-
-| Module | Reference | Validation |
-|--------|-----------|------------|
-| `bootstrap` | [Dynamax](https://github.com/probml/dynamax) Kalman filter | Log-ML within 5% of exact |
-| `auxiliary` | Dynamax Kalman filter | Log-ML within 5% of exact |
-| `auxiliary` | Bootstrap (flat auxiliary = bootstrap) | Log-ML within 3 nats |
-| `liu_west` | Auxiliary filter (fixed params) | Log-ML within 5 nats |
-
-## Notebooks
-
-The `notebooks/` directory contains a thesis-style Bayesian workflow
-reproduction using a Hidden Markov Model with unknown parameters,
-demonstrating the pipeline: simulation, Liu-West filtering, parameter
-recovery, model comparison via log Bayes factors, and CRPS evaluation.
-
-## Roadmap
-
-| Phase | What | Status |
-|-------|------|--------|
-| 1 | Bootstrap particle filter | Done |
-| 2 | Auxiliary particle filter | Done |
-| 3 | Forward simulation + diagnostics | Done |
-| 4 | Liu-West filter + model comparison | Done |
-| 5 | EKF/UKF proposal particle filters | Planned |
-| 6 | Particle MCMC (PMMH) | Planned |
 
 ## Development
 
